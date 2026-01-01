@@ -37,5 +37,5 @@ cron.schedule('*/30 * * * *', () => {
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     // Initial fetch on start
-    // updateAllFeeds(); 
+    updateAllFeeds().catch(console.error);
 });

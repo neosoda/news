@@ -18,6 +18,9 @@ async function fetchAndProcessFeed(source) {
             });
 
             if (!existing) {
+                // Add a small delay to avoid hitting Mistral AI rate limits too fast
+                await new Promise(resolve => setTimeout(resolve, 200));
+
                 let image = null;
                 // 1. Try standard RSS enclosure/media
                 if (item.enclosure && item.enclosure.url && item.enclosure.type && item.enclosure.type.startsWith('image')) {
@@ -56,6 +59,10 @@ async function fetchAndProcessFeed(source) {
             where: { id: source.id },
             data: { lastFetched: new Date() }
         });
+
+        if (newArticlesCount > 0) {
+            console.log(`Added ${newArticlesCount} new articles for ${source.name}`);
+        }
 
         return newArticlesCount;
 

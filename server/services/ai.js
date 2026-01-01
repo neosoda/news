@@ -4,9 +4,27 @@ require('dotenv').config();
 const apiKey = process.env.MISTRAL_API_KEY;
 const client = new Mistral({ apiKey: apiKey });
 
+let isAiDisabledUntil = 0;
+
+function checkAiCooldown() {
+    if (Date.now() < isAiDisabledUntil) {
+        return true;
+    }
+    return false;
+}
+
+function setAiCooldown(minutes = 5) {
+    console.warn(`Mistral AI Rate Limited. Disabling AI features for ${minutes} minutes.`);
+    isAiDisabledUntil = Date.now() + (minutes * 60 * 1000);
+}
+
 async function summarizeArticle(content) {
     if (!apiKey) {
         throw new Error("MISTRAL_API_KEY is not set");
+    }
+
+    if (checkAiCooldown()) {
+        return "Résumé non disponible (IA en pause suite à une limite de débit).";
     }
 
     try {
@@ -20,6 +38,9 @@ async function summarizeArticle(content) {
 
         return response.choices[0].message.content;
     } catch (error) {
+        if (error.statusCode === 429) {
+            setAiCooldown();
+        }
         console.error("Mistral AI Error:", error);
         throw error;
     }
@@ -27,6 +48,11 @@ async function summarizeArticle(content) {
 
 async function translateText(text) {
     if (!apiKey || !text) return text;
+
+    if (checkAiCooldown()) {
+        return text;
+    }
+
     try {
         const response = await client.chat.complete({
             model: "mistral-tiny",
@@ -37,6 +63,9 @@ async function translateText(text) {
         });
         return response.choices[0].message.content;
     } catch (error) {
+        if (error.statusCode === 429) {
+            setAiCooldown();
+        }
         console.error("Translation Error:", error);
         return text; // Fallback to original
     }
