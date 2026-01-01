@@ -78,7 +78,11 @@ router.post('/sources', async (req, res) => {
 router.delete('/sources/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        await prisma.source.delete({ where: { id: parseInt(id) } });
+        const sourceId = parseInt(id);
+        await prisma.$transaction([
+            prisma.article.deleteMany({ where: { sourceId } }),
+            prisma.source.delete({ where: { id: sourceId } })
+        ]);
         res.json({ success: true });
     } catch (error) {
         res.status(400).json({ error: error.message });
