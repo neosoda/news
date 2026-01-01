@@ -19,7 +19,7 @@ FROM node:20-alpine
 RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
-ENV DATABASE_URL="file:./dev.db"
+# DATABASE_URL must be provided as an environment variable in production
 WORKDIR /app
 
 COPY --from=server-build /app/server /app
