@@ -25,7 +25,7 @@ app.get('/api/health', (req, res) => {
 const clientBuildPath = path.join(__dirname, 'public');
 app.use(express.static(clientBuildPath));
 
-app.get('*', (req, res) => {
+app.get(/(.*)/, (req, res) => {
     if (req.path.startsWith('/api')) {
         return res.status(404).json({ error: 'Not found' });
     }
