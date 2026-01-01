@@ -1,3 +1,4 @@
+
 # Agrégateur de News Tech & IA 🤖📰
 
 Une application web complète de veille technologique automatisée, conçue avec une architecture "Thick Backend, Thin Frontend". Elle agrège des flux RSS, utilise l'IA (Mistral) pour les résumer, et présente le tout via une interface moderne.
