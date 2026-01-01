@@ -44,8 +44,19 @@ export default function ArticleCard({ article }) {
                     </a>
                 </h3>
 
-                <div className="text-xs text-gray-400 mb-4 flex items-center space-x-2">
-                    <span>{formatDistanceToNow(new Date(article.date), { addSuffix: true })}</span>
+                <div className="text-xs text-gray-400 mb-4 flex flex-col space-y-1">
+                    <span className="font-medium text-gray-500">
+                        {new Date(article.date).toLocaleString('fr-FR', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        })}
+                    </span>
+                    <span className="text-blue-400/80 italic">
+                        {formatDistanceToNow(new Date(article.date), { addSuffix: true })}
+                    </span>
                 </div>
 
                 {summary ? (

@@ -1,4 +1,5 @@
 const { Mistral } = require('@mistralai/mistralai');
+const axios = require('axios');
 require('dotenv').config();
 
 const apiKey = process.env.MISTRAL_API_KEY;

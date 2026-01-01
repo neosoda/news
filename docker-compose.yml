@@ -10,8 +10,10 @@ services:
       - PORT=3000
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/news
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - TRANSLATION_URL=http://libretranslate:5000/translate
     depends_on:
       - postgres
+      - libretranslate
     networks:
       - news-network
 
@@ -24,6 +26,14 @@ services:
       - "8080:80" # Exposed on host 8080
     depends_on:
       - app
+    networks:
+      - news-network
+
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    restart: always
+    environment:
+      - LT_LOAD_ONLY=en,fr
     networks:
       - news-network
 
