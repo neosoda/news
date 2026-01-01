@@ -12,6 +12,7 @@ WORKDIR /app
 COPY server/package*.json ./server/
 RUN cd server && npm ci
 COPY server ./server
+ENV DATABASE_URL="postgresql://johndoe:mypassword@localhost:5432/mydb?schema=public"
 RUN cd server && npx prisma generate
 
 FROM node:20-alpine
