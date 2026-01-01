@@ -37,9 +37,8 @@ Pour lancer le projet en local (avec SQLite):
 
 **Backend :**
 1.  Allez dans le dossier `server`.
-2.  Copiez `.env` et ajoutez votre clé API Mistral : `MISTRAL_API_KEY=votre_cle`.
-3.  Modifiez `prisma/schema.prisma` : changez `provider = "postgresql"` en `provider = "sqlite"`.
-4.  Installez et lancez :
+2.  Copiez `.env.example` en `.env` et ajoutez votre clé API Mistral : `MISTRAL_API_KEY=votre_cle`.
+3.  Installez et lancez :
     ```bash
     npm install
     npx prisma generate
