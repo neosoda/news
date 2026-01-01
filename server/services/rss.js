@@ -2,6 +2,7 @@ const Parser = require('rss-parser');
 const prisma = require('../db');
 const parser = new Parser();
 const cheerio = require('cheerio');
+const axios = require('axios');
 const { translateText } = require('./ai');
 
 async function fetchAndProcessFeed(source) {
@@ -9,16 +10,32 @@ async function fetchAndProcessFeed(source) {
         const feed = await parser.parseURL(source.url);
         console.log(`Fetched ${feed.items.length} items from ${source.name}`);
 
+        // Update source image/logo if not set
+        if (!source.image) {
+            let sourceImage = feed.image ? feed.image.url : null;
+            if (!sourceImage) {
+                // Try to get favicon from URL
+                try {
+                    const url = new URL(source.url);
+                    sourceImage = `${url.protocol}//${url.hostname}/favicon.ico`;
+                } catch (e) { }
+            }
+            if (sourceImage) {
+                await prisma.source.update({
+                    where: { id: source.id },
+                    data: { image: sourceImage }
+                });
+            }
+        }
+
         let newArticlesCount = 0;
 
         for (const item of feed.items) {
-            // Simple deduplication by link
             const existing = await prisma.article.findUnique({
                 where: { link: item.link }
             });
 
             if (!existing) {
-                // Add a small delay to avoid hitting Mistral AI rate limits too fast
                 await new Promise(resolve => setTimeout(resolve, 200));
 
                 let image = null;
@@ -29,14 +46,25 @@ async function fetchAndProcessFeed(source) {
                     image = item['media:content'].url;
                 }
 
-                // 2. Try parsing content with Cheerio if no image found
+                // 2. Try parsing content snippet for <img>
                 if (!image && (item.content || item.contentSnippet)) {
                     const $ = cheerio.load(item.content || item.contentSnippet);
                     const firstImg = $('img').first().attr('src');
                     if (firstImg) image = firstImg;
                 }
 
-                // Translate Title and Content (Snippet)
+                // 3. Deep recovery: Fetch page and look for og:image
+                if (!image && item.link) {
+                    try {
+                        const response = await axios.get(item.link, { timeout: 5000 });
+                        const $ = cheerio.load(response.data);
+                        image = $('meta[property="og:image"]').attr('content') ||
+                            $('meta[name="twitter:image"]').attr('content');
+                    } catch (e) {
+                        // console.error(`Deep image recovery failed for ${item.link}:`, e.message);
+                    }
+                }
+
                 const titleFr = await translateText(item.title);
                 const contentFr = await translateText(item.contentSnippet || item.content || '');
 
@@ -54,7 +82,6 @@ async function fetchAndProcessFeed(source) {
             }
         }
 
-        // Update last fetched time
         await prisma.source.update({
             where: { id: source.id },
             data: { lastFetched: new Date() }

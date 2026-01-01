@@ -28,15 +28,23 @@ export default function ArticleCard({ article }) {
                         alt={article.title}
                         className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
                     />
-                    <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-xs text-white font-medium">
-                        {article.source?.name}
+                    <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-xs text-white font-medium flex items-center space-x-2">
+                        {article.source?.image && (
+                            <img src={article.source.image} alt="" className="w-4 h-4 rounded-sm object-contain" />
+                        )}
+                        <span>{article.source?.name}</span>
                     </div>
                 </div>
             )}
 
             <div className="p-5 flex-1 flex flex-col">
                 {!article.image && (
-                    <div className="text-xs font-semibold text-blue-400 mb-2">{article.source?.name}</div>
+                    <div className="text-xs font-semibold text-blue-400 mb-2 flex items-center space-x-2">
+                        {article.source?.image && (
+                            <img src={article.source.image} alt="" className="w-4 h-4 rounded-sm object-contain" />
+                        )}
+                        <span>{article.source?.name}</span>
+                    </div>
                 )}
                 <h3 className="text-lg font-bold text-gray-100 leading-tight mb-2 group-hover:text-blue-400 transition-colors">
                     <a href={article.link} target="_blank" rel="noopener noreferrer" className="hover:underline">
