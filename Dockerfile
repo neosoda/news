@@ -16,6 +16,8 @@ RUN cd server && npx prisma generate
 
 FROM node:18-alpine
 
+RUN apk add --no-cache openssl
+
 ENV NODE_ENV=production
 WORKDIR /app
 
