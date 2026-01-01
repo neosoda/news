@@ -4,6 +4,17 @@ const { updateAllFeeds } = require('./services/rss');
 const { summarizeArticle } = require('./services/ai');
 const prisma = require('./db');
 
+// Health check
+router.get('/health', async (req, res) => {
+    try {
+        await prisma.$queryRaw`SELECT 1`;
+        res.json({ status: 'OK', database: 'connected' });
+    } catch (error) {
+        console.error('Health check failed:', error);
+        res.status(500).json({ status: 'ERROR', database: 'disconnected', error: error.message });
+    }
+});
+
 // GET /articles - List articles with pagination and search
 router.get('/articles', async (req, res) => {
     const page = parseInt(req.query.page) || 1;
@@ -18,7 +29,7 @@ router.get('/articles', async (req, res) => {
             { content: { contains: search } }
         ];
     }
-    if (category) {
+    if (category && typeof category === 'string' && category.trim() !== '') {
         where.source = { category: category };
     }
     if (req.query.sourceId) {
