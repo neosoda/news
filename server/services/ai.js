@@ -6,6 +6,8 @@ const apiKey = process.env.MISTRAL_API_KEY;
 const client = new Mistral({ apiKey: apiKey });
 
 let isAiDisabledUntil = 0;
+let isLibreTranslateAvailable = true;
+let lastLibreTranslateCheck = 0;
 
 function checkAiCooldown() {
     if (Date.now() < isAiDisabledUntil) {
@@ -53,25 +55,39 @@ async function translateText(text) {
     // Use the service name 'libretranslate' for internal Docker networking
     const translationUrl = process.env.TRANSLATION_URL || 'http://libretranslate:5000/translate';
 
+    // If LibreTranslate was marked as unavailable, wait 10 minutes before checking again
+    if (!isLibreTranslateAvailable && (Date.now() - lastLibreTranslateCheck < 10 * 60 * 1000)) {
+        return await fallbackToMistral(text);
+    }
+
     try {
         const response = await axios.post(translationUrl, {
             q: text,
             source: "auto",
             target: "fr",
             format: "text"
-        }, { timeout: 5000 });
+        }, { timeout: 3000 });
 
         if (response.data && response.data.translatedText) {
+            isLibreTranslateAvailable = true;
             return response.data.translatedText;
         }
     } catch (error) {
-        if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-            console.error(`LibreTranslate unavailable at ${translationUrl}: ${error.message}`);
+        if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
+            if (isLibreTranslateAvailable) {
+                console.warn(`LibreTranslate unavailable at ${translationUrl}. Falling back to Mistral AI.`);
+                isLibreTranslateAvailable = false;
+                lastLibreTranslateCheck = Date.now();
+            }
         } else {
             console.error("LibreTranslate Error:", error.response?.data || error.message);
         }
     }
 
+    return await fallbackToMistral(text);
+}
+
+async function fallbackToMistral(text) {
     // Fallback to Mistral AI if local service fails
     if (!apiKey || checkAiCooldown()) return text;
 
@@ -88,7 +104,7 @@ async function translateText(text) {
         if (error.statusCode === 429) {
             setAiCooldown();
         }
-        console.error("Translation Error:", error);
+        console.error("Translation Error (Mistral):", error.message);
         return text; // Fallback to original
     }
 }
