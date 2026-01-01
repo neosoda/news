@@ -2,17 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-}
-
-body {
-  @apply bg-gray-50 text-gray-900;
-}
-
-/* Dark mode support if we add it later */
-@media (prefers-color-scheme: dark) {
-  body {
-    @apply bg-gray-900 text-white;
+@layer base {
+  :root {
+    --brand-primary: #3b82f6;
+    --brand-secondary: #8b5cf6;
+    --bg-dark: #030712;
+    --bg-darker: #020617;
+    --glass-bg: rgba(17, 24, 39, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.1);
   }
+
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased selection:bg-blue-500/30 selection:text-blue-200;
+    background-image:
+      radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.1) 0, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-gray-900/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+
+  .glass-header {
+    @apply bg-gray-950/80 backdrop-blur-md border-b border-white/5;
+  }
+
+  .glass-sidebar {
+    @apply bg-gray-950/90 backdrop-blur-lg border-r border-white/5;
+  }
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
