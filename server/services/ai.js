@@ -65,7 +65,11 @@ async function translateText(text) {
             return response.data.translatedText;
         }
     } catch (error) {
-        console.error("LibreTranslate Error, falling back to Mistral or original:", error.message);
+        if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+            console.error(`LibreTranslate unavailable at ${translationUrl}: ${error.message}`);
+        } else {
+            console.error("LibreTranslate Error:", error.response?.data || error.message);
+        }
     }
 
     // Fallback to Mistral AI if local service fails

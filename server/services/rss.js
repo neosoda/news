@@ -68,17 +68,26 @@ async function fetchAndProcessFeed(source) {
                 const titleFr = await translateText(item.title);
                 const contentFr = await translateText(item.contentSnippet || item.content || '');
 
-                await prisma.article.create({
-                    data: {
-                        title: titleFr,
-                        link: item.link,
-                        date: item.pubDate ? new Date(item.pubDate) : new Date(),
-                        content: contentFr,
-                        sourceId: source.id,
-                        image: image
+                try {
+                    await prisma.article.create({
+                        data: {
+                            title: titleFr,
+                            link: item.link,
+                            date: item.pubDate ? new Date(item.pubDate) : new Date(),
+                            content: contentFr,
+                            sourceId: source.id,
+                            image: image
+                        }
+                    });
+                    newArticlesCount++;
+                } catch (createError) {
+                    if (createError.code === 'P2002') {
+                        // Article already exists, skip it
+                        // console.log(`Article already exists (duplicate link): ${item.link}`);
+                    } else {
+                        console.error(`Error creating article:`, createError);
                     }
-                });
-                newArticlesCount++;
+                }
             }
         }
 
