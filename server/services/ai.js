@@ -52,8 +52,8 @@ async function summarizeArticle(content) {
 async function translateText(text) {
     if (!text) return text;
 
-    // Use the service name 'libretranslate' for internal Docker networking
-    const translationUrl = process.env.TRANSLATION_URL || 'http://libretranslate:5000/translate';
+    // Use the user's external LibreTranslate instance
+    const translationUrl = process.env.TRANSLATION_URL || 'https://translate.techsentinel.fr/translate';
 
     // If LibreTranslate was marked as unavailable, wait 10 minutes before checking again
     if (!isLibreTranslateAvailable && (Date.now() - lastLibreTranslateCheck < 10 * 60 * 1000)) {
