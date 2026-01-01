@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/news
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+    depends_on:
+      - postgres
+    networks:
+      - news-network
+
+  web:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8080:80" # Exposed on host 8080
+    depends_on:
+      - app
+    networks:
+      - news-network
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: news
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - news-network
+
+networks:
+  news-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

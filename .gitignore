@@ -1,0 +1,23 @@
+node_modules
+dist
+.env
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database
+server/dev.db
+server/dev.db-journal
+server/prisma/dev.db
+server/prisma/dev.db-journal
+
+# Prisma
+server/node_modules
+server/prisma/migrations
+!server/prisma/schema.prisma
+
+# Editor
+.vscode
+.idea
