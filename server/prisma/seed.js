@@ -74,13 +74,14 @@ async function main() {
         { name: 'DataScientest', url: 'https://datascientest.com/feed/', category: 'Education' },
     ];
 
+    console.log('Cleaning up old sources...');
+    await prisma.source.deleteMany();
+
     console.log('Seeding sources...');
 
     for (const source of sources) {
-        await prisma.source.upsert({
-            where: { url: source.url },
-            update: { name: source.name, category: source.category },
-            create: { name: source.name, url: source.url, category: source.category },
+        await prisma.source.create({
+            data: { name: source.name, url: source.url, category: source.category },
         });
     }
 

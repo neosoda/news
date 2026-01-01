@@ -50,8 +50,8 @@ async function summarizeArticle(content) {
 async function translateText(text) {
     if (!text) return text;
 
-    // Always use LibreTranslate if possible to avoid Mistral costs/limits
-    const translationUrl = process.env.TRANSLATION_URL || 'http://localhost:5000/translate';
+    // Use the service name 'libretranslate' for internal Docker networking
+    const translationUrl = process.env.TRANSLATION_URL || 'http://libretranslate:5000/translate';
 
     try {
         const response = await axios.post(translationUrl, {
@@ -59,7 +59,7 @@ async function translateText(text) {
             source: "auto",
             target: "fr",
             format: "text"
-        });
+        }, { timeout: 5000 });
 
         if (response.data && response.data.translatedText) {
             return response.data.translatedText;
