@@ -1,0 +1,27 @@
+FROM node:18-alpine AS client-build
+
+WORKDIR /app
+COPY client/package*.json ./client/
+RUN cd client && npm ci
+COPY client ./client
+RUN cd client && npm run build
+
+FROM node:18-alpine AS server-build
+
+WORKDIR /app
+COPY server/package*.json ./server/
+RUN cd server && npm ci
+COPY server ./server
+RUN cd server && npx prisma generate
+
+FROM node:18-alpine
+
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY --from=server-build /app/server /app
+COPY --from=client-build /app/client/dist /app/public
+
+EXPOSE 3000
+
+CMD ["sh", "-c", "npx prisma migrate deploy && node index.js"]

@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -10,16 +11,26 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Health check
-app.get('/', (req, res) => {
-    res.send('News Aggregator API is running');
-});
-
 const apiRoutes = require('./routes');
 const cron = require('node-cron');
 const { updateAllFeeds } = require('./services/rss');
 
 app.use('/api', apiRoutes);
+
+// Health check
+app.get('/api/health', (req, res) => {
+    res.send('News Aggregator API is running');
+});
+
+const clientBuildPath = path.join(__dirname, 'public');
+app.use(express.static(clientBuildPath));
+
+app.get('*', (req, res) => {
+    if (req.path.startsWith('/api')) {
+        return res.status(404).json({ error: 'Not found' });
+    }
+    res.sendFile(path.join(clientBuildPath, 'index.html'));
+});
 
 // Schedule RSS update every 30 minutes
 cron.schedule('*/30 * * * *', () => {
