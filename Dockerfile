@@ -19,7 +19,7 @@ FROM node:20-alpine
 RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
-ENV DATABASE_URL="file:/app/server/prisma/dev.db"
+ENV DATABASE_URL="file:/app/prisma/dev.db"
 WORKDIR /app
 
 COPY --from=server-build /app/server /app
