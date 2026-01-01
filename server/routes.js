@@ -45,6 +45,7 @@ router.get('/articles', async (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Error fetching articles:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -55,6 +56,7 @@ router.get('/sources', async (req, res) => {
         const sources = await prisma.source.findMany();
         res.json(sources);
     } catch (error) {
+        console.error('Error fetching sources:', error);
         res.status(500).json({ error: error.message });
     }
 });
