@@ -56,17 +56,7 @@ async function fetchAndProcessFeed(source) {
                 // 3. Deep recovery: Fetch page and look for og:image
                 if (!image && item.link) {
                     try {
-                        const targetUrl = new URL(item.link);
-                        // Prevent SSRF: Block local/internal IPs (basic check)
-                        const isInternal = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(targetUrl.hostname);
-                        if (isInternal || targetUrl.hostname === 'localhost') {
-                            throw new Error('Blocked internal URL');
-                        }
-
-                        const response = await axios.get(item.link, {
-                            timeout: 5000,
-                            maxContentLength: 1024 * 1024 // 1MB limit for HTML
-                        });
+                        const response = await axios.get(item.link, { timeout: 5000 });
                         const $ = cheerio.load(response.data);
                         image = $('meta[property="og:image"]').attr('content') ||
                             $('meta[name="twitter:image"]').attr('content');
