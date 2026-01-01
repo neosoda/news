@@ -16,6 +16,7 @@ model Source {
   name        String
   url         String    @unique
   category    String    @default("General")
+  image       String?   // Source logo/favicon
   lastFetched DateTime?
   createdAt   DateTime  @default(now())
   articles    Article[]
