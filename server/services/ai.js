@@ -48,11 +48,28 @@ async function summarizeArticle(content) {
 }
 
 async function translateText(text) {
-    if (!apiKey || !text) return text;
+    if (!text) return text;
 
-    if (checkAiCooldown()) {
-        return text;
+    // Always use LibreTranslate if possible to avoid Mistral costs/limits
+    const translationUrl = process.env.TRANSLATION_URL || 'http://localhost:5000/translate';
+
+    try {
+        const response = await axios.post(translationUrl, {
+            q: text,
+            source: "auto",
+            target: "fr",
+            format: "text"
+        });
+
+        if (response.data && response.data.translatedText) {
+            return response.data.translatedText;
+        }
+    } catch (error) {
+        console.error("LibreTranslate Error, falling back to Mistral or original:", error.message);
     }
+
+    // Fallback to Mistral AI if local service fails
+    if (!apiKey || checkAiCooldown()) return text;
 
     try {
         const response = await client.chat.complete({
