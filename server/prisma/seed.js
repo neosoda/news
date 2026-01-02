@@ -74,7 +74,8 @@ async function main() {
         { name: 'DataScientest', url: 'https://datascientest.com/feed/', category: 'Education' },
     ];
 
-    console.log('Cleaning up old sources...');
+    console.log('Cleaning up old data...');
+    await prisma.article.deleteMany();
     await prisma.source.deleteMany();
 
     console.log('Seeding sources...');
