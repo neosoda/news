@@ -8,23 +8,11 @@ services:
     restart: always
     environment:
       - PORT=3000
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/news
+      - SQLITE_URL=file:/app/prisma/dev.db
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - TRANSLATION_URL=https://translate.techsentinel.fr/translate
-    depends_on:
-      - postgres
-    networks:
-      - news-network
-
-  postgres:
-    image: postgres:15-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: news
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - news-data:/app/prisma
     networks:
       - news-network
 
@@ -33,4 +21,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
+  news-data:

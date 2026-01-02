@@ -2,7 +2,7 @@ FROM node:18-alpine
 
 RUN apk add --no-cache openssl
 
-ENV SQLITE_URL=file:./dev.db
+ENV SQLITE_URL=file:/app/prisma/dev.db
 WORKDIR /app
 
 COPY package*.json ./
