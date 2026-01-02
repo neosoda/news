@@ -13,4 +13,4 @@ RUN npx prisma generate
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "if [ -n \"$SQLITE_URL\" ] && [ \"${SQLITE_URL#file:}\" = \"$SQLITE_URL\" ]; then export SQLITE_URL=\"file:$SQLITE_URL\"; fi && npx prisma db push --accept-data-loss && npx prisma db seed && node index.js"]
+CMD ["sh", "-c", "if [ -z \"$SQLITE_URL\" ]; then export SQLITE_URL=\"file:/app/prisma/dev.db\"; elif [ \"${SQLITE_URL#file:}\" = \"$SQLITE_URL\" ]; then export SQLITE_URL=\"file:$SQLITE_URL\"; fi && npx prisma db push --accept-data-loss && npx prisma db seed && node index.js"]

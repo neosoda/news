@@ -1,8 +1,10 @@
 const { PrismaClient } = require('@prisma/client');
 require('dotenv').config();
 
-// Auto-fix SQLITE_URL prefix if missing
-if (process.env.SQLITE_URL && !process.env.SQLITE_URL.startsWith('file:')) {
+// Auto-fix SQLITE_URL prefix if missing or empty
+if (!process.env.SQLITE_URL || process.env.SQLITE_URL.trim() === "") {
+    process.env.SQLITE_URL = 'file:/app/prisma/dev.db';
+} else if (!process.env.SQLITE_URL.startsWith('file:')) {
     process.env.SQLITE_URL = `file:${process.env.SQLITE_URL}`;
 }
 
