@@ -109,4 +109,28 @@ async function fallbackToMistral(text) {
     }
 }
 
-module.exports = { summarizeArticle, translateText };
+async function categorizeArticle(title, content) {
+    if (!apiKey) return "Autre";
+    if (checkAiCooldown()) return null;
+
+    try {
+        const response = await client.chat.complete({
+            model: "mistral-tiny",
+            messages: [
+                {
+                    role: "system",
+                    content: "Tu es un expert en classification de news tech. Classe l'article suivant dans l'UNE de ces catégories : Cybersecurité, Intelligence Artificielle, Cloud, Développement, Hardware, Web, Société, Business, Autre. Réponds uniquement par le nom de la catégorie."
+                },
+                { role: "user", content: `Titre: ${title}\n\nContenu: ${content.substring(0, 1000)}` }
+            ]
+        });
+
+        return response.choices[0].message.content.trim();
+    } catch (error) {
+        if (error.statusCode === 429) setAiCooldown();
+        console.error("Categorization Error:", error.message);
+        return null;
+    }
+}
+
+module.exports = { summarizeArticle, translateText, categorizeArticle };

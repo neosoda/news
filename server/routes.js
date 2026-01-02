@@ -30,7 +30,14 @@ router.get('/articles', async (req, res) => {
         ];
     }
     if (category && typeof category === 'string' && category.trim() !== '') {
-        where.source = { category: category };
+        where.OR = [
+            { category: category },
+            { source: { category: category } }
+        ];
+    }
+
+    if (req.query.bookmarked === 'true') {
+        where.isBookmarked = true;
     }
     if (req.query.sourceId) {
         where.sourceId = parseInt(req.query.sourceId);
@@ -131,6 +138,38 @@ router.post('/articles/:id/summarize', async (req, res) => {
         });
 
         res.json({ summary: updated.summary });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /articles/:id/bookmark - Toggle bookmark
+router.post('/articles/:id/bookmark', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const article = await prisma.article.findUnique({ where: { id: parseInt(id) } });
+        if (!article) return res.status(404).json({ error: "Article not found" });
+
+        const updated = await prisma.article.update({
+            where: { id: parseInt(id) },
+            data: { isBookmarked: !article.isBookmarked }
+        });
+
+        res.json({ isBookmarked: updated.isBookmarked });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /bookmarks - Helper route for only bookmarks
+router.get('/bookmarks', async (req, res) => {
+    try {
+        const bookmarks = await prisma.article.findMany({
+            where: { isBookmarked: true },
+            orderBy: { date: 'desc' },
+            include: { source: true }
+        });
+        res.json(bookmarks);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

@@ -8,7 +8,7 @@ const parser = new Parser({
 });
 const cheerio = require('cheerio');
 const axios = require('axios');
-const { translateText } = require('./ai');
+const { translateText, categorizeArticle } = require('./ai');
 
 async function fetchAndProcessFeed(source) {
     try {
@@ -36,6 +36,13 @@ async function fetchAndProcessFeed(source) {
         let newArticlesCount = 0;
 
         for (const item of feed.items) {
+            const articleDate = item.pubDate ? new Date(item.pubDate) : new Date();
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            // Fetch only items from the last 7 days
+            if (articleDate < sevenDaysAgo) continue;
+
             const existing = await prisma.article.findUnique({
                 where: { link: item.link }
             });
@@ -72,6 +79,7 @@ async function fetchAndProcessFeed(source) {
 
                 const titleFr = await translateText(item.title);
                 const contentFr = await translateText(item.contentSnippet || item.content || '');
+                const category = await categorizeArticle(titleFr, contentFr);
 
                 try {
                     await prisma.article.create({
@@ -81,7 +89,8 @@ async function fetchAndProcessFeed(source) {
                             date: item.pubDate ? new Date(item.pubDate) : new Date(),
                             content: contentFr,
                             sourceId: source.id,
-                            image: image
+                            image: image,
+                            category: category || source.category
                         }
                     });
                     newArticlesCount++;
@@ -113,8 +122,30 @@ async function fetchAndProcessFeed(source) {
     }
 }
 
+async function cleanupOldArticles() {
+    console.log('Cleaning up articles older than 30 days...');
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    try {
+        const deleted = await prisma.article.deleteMany({
+            where: {
+                date: { lt: thirtyDaysAgo },
+                isBookmarked: false // Protect bookmarked articles from cleanup
+            }
+        });
+        console.log(`Cleanup complete. Deleted ${deleted.count} old articles.`);
+    } catch (error) {
+        console.error('Error during cleanup:', error);
+    }
+}
+
 async function updateAllFeeds() {
     console.log('Starting RSS feed update...');
+
+    // Run cleanup before update
+    await cleanupOldArticles();
+
     const sources = await prisma.source.findMany();
     let totalNew = 0;
 
@@ -126,4 +157,4 @@ async function updateAllFeeds() {
     return totalNew;
 }
 
-module.exports = { updateAllFeeds, fetchAndProcessFeed };
+module.exports = { updateAllFeeds, fetchAndProcessFeed, cleanupOldArticles };

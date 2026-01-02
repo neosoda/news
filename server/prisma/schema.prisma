@@ -32,6 +32,8 @@ model Article {
   summary     String? // AI Summary
   sentiment   String? // AI Sentiment
   keywords    String? // JSON string or comma separated
+  category    String? // Intelligent categorization
+  isBookmarked Boolean  @default(false)
   sourceId    Int
   source      Source   @relation(fields: [sourceId], references: [id])
   createdAt   DateTime @default(now())
