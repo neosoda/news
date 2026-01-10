@@ -81,6 +81,11 @@ async function fetchAndProcessFeed(source) {
                 const contentFr = await translateText(item.contentSnippet || item.content || '');
                 const category = await categorizeArticle(titleFr, contentFr);
 
+                if (category === 'Spam') {
+                    console.log(`❌ Article ignoré (Putaclic/Pub): ${titleFr}`);
+                    continue;
+                }
+
                 try {
                     await prisma.article.create({
                         data: {

@@ -119,7 +119,7 @@ async function categorizeArticle(title, content) {
             messages: [
                 {
                     role: "system",
-                    content: "Tu es un expert en classification de news tech. Classe l'article suivant dans l'UNE de ces catégories : Cybersecurité, Intelligence Artificielle, Cloud, Développement, Hardware, Web, Société, Business, Autre. Réponds uniquement par le nom de la catégorie."
+                    content: "Tu es un expert en classification de news tech. Analyse l'article. Est-ce un article 'Putaclic' (titre exagéré, piège à clics, vidéo sans résumé) ou purement 'Promotionnel' (publi-reportage, vente de produit) ? Si OUI, réponds uniquement 'Spam'. Sinon, classe l'article dans l'UNE de ces catégories : Cybersecurité, Intelligence Artificielle, Cloud, Développement, Hardware, Web, Société, Business, Autre. Réponds uniquement par le nom de la catégorie."
                 },
                 { role: "user", content: `Titre: ${title}\n\nContenu: ${content.substring(0, 1000)}` }
             ]
