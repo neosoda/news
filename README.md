@@ -81,6 +81,12 @@ Le projet est "Zero-Touch" : tout est automatisé au démarrage.
 └── README.md
 ```
 
+## 🤖 Automatisation Assistée
+
+Le projet supporte désormais l'automatisation via Antigravity :
+- **Workflows .agent** : Les scripts de maintenance et de monitoring sont centralisés dans `.agent/workflows/`.
+- **Pilotage Turbo** : Le mode `auto.md` permet une gestion 100% autonome de la stack Docker et Prisma.
+
 ## 📝 API Endpoints
 
 -   `GET /api/articles` : Liste des articles (paginé).
