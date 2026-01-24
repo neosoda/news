@@ -87,6 +87,23 @@ async function fetchFeedXml(source) {
     };
 }
 
+const { URL } = require('url');
+
+function normalizeUrl(url) {
+    try {
+        const parsed = new URL(url);
+        // Remove common tracking parameters
+        const paramsToRemove = [
+            'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+            'fbclid', 'gclid', 'msclkid', 'ref', 'source'
+        ];
+        paramsToRemove.forEach(param => parsed.searchParams.delete(param));
+        return parsed.toString();
+    } catch (e) {
+        return url;
+    }
+}
+
 async function fetchAndProcessFeed(source) {
     const sourceLabel = `source="${source.name}" url="${source.url}"`;
     console.log(`[RSS] Fetch start ${sourceLabel}`);
@@ -170,8 +187,18 @@ async function fetchAndProcessFeed(source) {
                 continue;
             }
 
-            const existing = await prisma.article.findUnique({
-                where: { link: item.link }
+            const normalizedLink = normalizeUrl(item.link);
+
+            // Check for existing article by Link (normalized) OR Title
+            // This prevents duplicates from same URL with different params AND same content with different URL
+            const existing = await prisma.article.findFirst({
+                where: {
+                    OR: [
+                        { link: normalizedLink },
+                        { link: item.link }, // Check original link too just in case
+                        { title: item.title } // Check strictly by title to avoid cross-posting duplicates
+                    ]
+                }
             });
 
             if (existing) {
@@ -210,6 +237,8 @@ async function fetchAndProcessFeed(source) {
                 }
 
                 const titleFr = await translateText(item.title);
+                // Double check translated title to be sure (optional, but let's stick to original title for duplication check)
+
                 const contentFr = await translateText(item.contentSnippet || item.content || '');
                 const category = await categorizeArticle(titleFr, contentFr);
 
@@ -221,8 +250,8 @@ async function fetchAndProcessFeed(source) {
                 try {
                     await prisma.article.create({
                         data: {
-                            title: titleFr,
-                            link: item.link,
+                            title: titleFr, // We store the French title
+                            link: normalizedLink, // Store normalized link
                             date: articleDate,
                             content: contentFr,
                             sourceId: source.id,
@@ -236,7 +265,7 @@ async function fetchAndProcessFeed(source) {
                         skippedExisting++;
                     } else {
                         createErrors++;
-                        console.error(`[RSS] Article create failed ${sourceLabel} link="${item.link}" reason="${createError.message}"`);
+                        console.error(`[RSS] Article create failed ${sourceLabel} link="${normalizedLink}" reason="${createError.message}"`);
                     }
                 }
             } catch (itemError) {

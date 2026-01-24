@@ -33,3 +33,13 @@ export const summarizeArticle = async (id) => {
     const { data } = await api.post(`/articles/${id}/summarize`);
     return data;
 };
+
+export const getBookmarks = async () => {
+    const { data } = await api.get('/bookmarks');
+    return data;
+};
+
+export const toggleBookmark = async (id) => {
+    const { data } = await api.post(`/articles/${id}/bookmark`);
+    return data;
+};
