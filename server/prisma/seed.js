@@ -20,11 +20,21 @@ async function main() {
         { name: 'CERT-FR CTI', url: 'https://www.cert.ssi.gouv.fr/cti/feed/', category: 'Cybersecurité' },
         { name: 'Le Big Data - Cybersecurite', url: 'https://www.lebigdata.fr/categorie/cybersecurite/feed/', category: 'Cybersecurité' },
         { name: 'ZATAZ (Feed)', url: 'https://www.zataz.com/feed/', category: 'Cybersecurité' },
+        // International Cybersecurity (New)
+        { name: 'Bleeping Computer', url: 'https://www.bleepingcomputer.com/feed/', category: 'Cybersecurité' },
+        { name: 'Krebs on Security', url: 'https://krebsonsecurity.com/feed/', category: 'Cybersecurité' },
+        { name: 'Schneier on Security', url: 'https://www.schneier.com/blog/atom.xml', category: 'Cybersecurité' },
+        { name: 'Dark Reading', url: 'https://www.darkreading.com/rss.xml', category: 'Cybersecurité' },
 
         // Intelligence Artificielle
         { name: 'ActuIA', url: 'https://www.actuia.com/feed/', category: 'AI' },
         { name: 'Le Big Data - AI', url: 'https://www.lebigdata.fr/categorie/ia/feed/', category: 'AI' },
         { name: 'L\'Usine Digitale - IA', url: 'https://www.usine-digitale.fr/ia/rss', category: 'AI' },
+        // International AI (New)
+        { name: 'OpenAI Blog', url: 'https://openai.com/blog/rss.xml', category: 'AI' },
+        { name: 'Google DeepMind', url: 'https://deepmind.google/discover/blog/rss.xml', category: 'AI' },
+        { name: 'Microsoft AI Blog', url: 'https://blogs.microsoft.com/ai/feed/', category: 'AI' },
+        { name: 'Hugging Face Blog', url: 'https://huggingface.co/blog/feed.xml', category: 'AI' },
 
         // Actualités Tech
         { name: '01net', url: 'https://www.01net.com/info/flux-rss/', category: 'Tech News' },
@@ -46,6 +56,10 @@ async function main() {
         { name: 'Futura Tech', url: 'https://www.futura-sciences.com/rss/actualites/tech/', category: 'Tech News' },
         { name: 'Futura High-Tech', url: 'https://www.futura-sciences.com/rss/actualites/high-tech/', category: 'Tech News' },
         { name: 'L\'Usine Digitale', url: 'https://www.usine-digitale.fr/rss', category: 'Tech News' },
+        // International Tech (New)
+        { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index', category: 'Tech News' },
+        { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', category: 'Tech News' },
+        { name: 'Smashing Magazine', url: 'https://www.smashingmagazine.com/feed/', category: 'Tech News' },
 
         // Développement & IT
         { name: 'Developpez.com', url: 'https://www.developpez.com/index/rss', category: 'Development' },
@@ -55,9 +69,8 @@ async function main() {
         { name: 'Journal du Hacker', url: 'https://www.journalduhacker.net/rss', category: 'Development' },
         { name: 'Programmez!', url: 'https://www.programmez.com/rss.xml', category: 'Development' },
         { name: 'IT-Connect (Main)', url: 'https://www.it-connect.fr/feed/', category: 'IT' },
-
-        // Cloud & Infrastructure
-        { name: 'OVHcloud Blog', url: 'https://blog.ovhcloud.com/fr/feed/', category: 'Cloud' },
+        // International Dev (New)
+        { name: 'Dev.to', url: 'https://dev.to/feed', category: 'Development' },
         { name: 'Scaleway Blog', url: 'https://www.scaleway.com/fr/blog/feed.xml', category: 'Cloud' },
         { name: 'Clever Cloud Blog', url: 'https://www.clever-cloud.com/fr/feed/', category: 'Cloud' },
         { name: 'OCTO Blog', url: 'https://blog.octo.com/feed/', category: 'IT' },
