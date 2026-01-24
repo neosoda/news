@@ -175,4 +175,81 @@ router.get('/bookmarks', async (req, res) => {
     }
 });
 
+const { generateCategoryBrief } = require('./services/ai');
+
+// GET /daily-brief - Generate daily highlights
+router.get('/daily-brief', async (req, res) => {
+    try {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        // 1. Fetch articles from last 24h
+        const articles = await prisma.article.findMany({
+            where: {
+                date: { gt: yesterday },
+                category: { not: 'Spam' }
+            },
+            include: { source: true },
+            orderBy: { date: 'desc' }
+        });
+
+        if (articles.length === 0) {
+            return res.json([]);
+        }
+
+        // 2. Group by category
+        const groups = {};
+        const categories = ['Cybersecurité', 'Intelligence Artificielle', 'Tech News', 'Cloud', 'Development', 'IT', 'Open Source', 'Business'];
+
+        // Initialize groups
+        categories.forEach(c => groups[c] = []);
+
+        // Distribute articles
+        articles.forEach(article => {
+            // Normalize category or fallback
+            let cat = article.category;
+            if (!categories.includes(cat)) {
+                // Try to map or ignore
+                // For now, if "Autre" or similar, maybe skip or put in Tech News?
+                // Let's protect against undefined keys
+                if (groups[cat]) {
+                    groups[cat].push(article);
+                }
+            } else {
+                groups[cat].push(article);
+            }
+        });
+
+        // 3. Process each category (that has items)
+        const briefs = [];
+        const activeCategories = Object.keys(groups).filter(c => groups[c].length > 0);
+
+        // Process sequentially to avoid hitting rate limits too hard
+        for (const cat of activeCategories) {
+            const catArticles = groups[cat];
+
+            // Find a "Hero" image for this category (best quality from articles)
+            const heroArticle = catArticles.find(a => a.image) || catArticles[0];
+            const heroImage = heroArticle ? heroArticle.image : null;
+
+            // Generate summary
+            const summary = await generateCategoryBrief(cat, catArticles);
+
+            briefs.push({
+                category: cat,
+                summary: summary,
+                articleCount: catArticles.length,
+                heroImage: heroImage,
+                topArticles: catArticles.slice(0, 5) // Send top 5 metadata/links for context
+            });
+        }
+
+        res.json(briefs);
+
+    } catch (error) {
+        console.error('Daily Brief Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;

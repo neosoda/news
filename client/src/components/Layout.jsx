@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark } from 'lucide-react';
+import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap } from 'lucide-react';
 import clsx from 'clsx';
 
 function NavItem({ to, icon: Icon, children, onClick }) {
@@ -33,6 +33,7 @@ export default function Layout({ children, onSearch }) {
     const getPageTitle = () => {
         switch (location.pathname) {
             case '/': return 'Dashboard';
+            case '/daily-brief': return 'Brief IA Quotidien';
             case '/sources': return 'Sources RSS';
             case '/bookmarks': return 'Articles favoris';
             default: return 'Actualités';
@@ -68,6 +69,7 @@ export default function Layout({ children, onSearch }) {
 
                 <nav className="flex-1 p-6 space-y-3 mt-4">
                     <NavItem to="/" icon={LayoutDashboard} onClick={closeSidebar}>Articles</NavItem>
+                    <NavItem to="/daily-brief" icon={Zap} onClick={closeSidebar}>Brief IA</NavItem>
                     <NavItem to="/bookmarks" icon={Bookmark} onClick={closeSidebar}>Favoris</NavItem>
                     <NavItem to="/sources" icon={Rss} onClick={closeSidebar}>Sources</NavItem>
                 </nav>

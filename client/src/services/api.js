@@ -43,3 +43,8 @@ export const toggleBookmark = async (id) => {
     const { data } = await api.post(`/articles/${id}/bookmark`);
     return data;
 };
+
+export const getDailyBrief = async () => {
+    const { data } = await api.get('/daily-brief');
+    return data;
+};

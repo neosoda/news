@@ -133,4 +133,42 @@ async function categorizeArticle(title, content) {
     }
 }
 
-module.exports = { summarizeArticle, translateText, categorizeArticle };
+async function generateCategoryBrief(category, articles) {
+    if (!apiKey) return "Résumé indisponible (Clé API manquante).";
+    if (checkAiCooldown()) return "Résumé indisponible (IA en pause).";
+    if (articles.length === 0) return "Aucune actualité majeure dans cette catégorie aujourd'hui.";
+
+    // Simplify input to save tokens: Title + first 100 chars of content
+    const inputContent = articles
+        .slice(0, 15) // Limit to top 15 stories to fit context window
+        .map(a => `- ${a.title}: ${a.content ? a.content.substring(0, 100).replace(/\n/g, ' ') : ''}...`)
+        .join('\n');
+
+    try {
+        const response = await client.chat.complete({
+            model: "mistral-tiny",
+            messages: [
+                {
+                    role: "system",
+                    content: `Tu es un journaliste expert tech. Rédige un "Brief Quotidien" pour la catégorie "${category}".
+Objectifs:
+1. Synthétise les actualités fournies en un résumé fluide et structuré de 5 à 7 lignes maximum.
+2. Adopte un ton neutre, factuel et professionnel ("presse tech premium").
+3. Mets en avant les faits marquants et leurs impacts.
+4. Évite les répétitions et ignore les sujets trop mineurs ou sensationnalistes.
+5. Si aucune tendance claire ne se dégage, résume simplement les 2-3 infos les plus importantes.
+IMPORTANT: Ne base ton résumé QUE sur les titres fournis. N'invente rien.`
+                },
+                { role: "user", content: `Voici les dernières actualités pour la catégorie ${category}:\n\n${inputContent}` }
+            ]
+        });
+
+        return response.choices[0].message.content.trim();
+    } catch (error) {
+        if (error.statusCode === 429) setAiCooldown();
+        console.error(`Daily Brief Error (${category}):`, error.message);
+        return "Impossible de générer le résumé pour le moment.";
+    }
+}
+
+module.exports = { summarizeArticle, translateText, categorizeArticle, generateCategoryBrief };
