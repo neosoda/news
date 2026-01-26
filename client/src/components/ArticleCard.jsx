@@ -15,6 +15,32 @@ const CATEGORY_COLORS = {
     'Autre': 'bg-gray-500/20 text-gray-400 border-gray-500/30',
 };
 
+const KNOWN_CATEGORIES = Object.keys(CATEGORY_COLORS);
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeCategory(category) {
+    if (!category || typeof category !== 'string') {
+        return 'Autre';
+    }
+
+    const trimmed = category.trim();
+    if (!trimmed) return 'Autre';
+
+    const exactMatch = KNOWN_CATEGORIES.find(
+        (known) => known.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (exactMatch) return exactMatch;
+
+    const matchedCategory = KNOWN_CATEGORIES.find((known) =>
+        new RegExp(`\\b${escapeRegExp(known)}\\b`, 'i').test(trimmed)
+    );
+
+    return matchedCategory || 'Autre';
+}
+
 export default function ArticleCard({ article }) {
     const [summary, setSummary] = useState(article.summary);
     const [isBookmarked, setIsBookmarked] = useState(article.isBookmarked);
@@ -43,13 +69,14 @@ export default function ArticleCard({ article }) {
         }
     };
 
-    const categoryStyle = CATEGORY_COLORS[article.category] || CATEGORY_COLORS['Autre'];
+    const resolvedCategory = normalizeCategory(article.category);
+    const categoryStyle = CATEGORY_COLORS[resolvedCategory] || CATEGORY_COLORS['Autre'];
 
     return (
         <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden hover:shadow-2xl transition-all duration-300 flex flex-col group relative">
             {/* Category Badge */}
             <div className={`absolute top-3 left-3 z-10 px-2.5 py-1 rounded-full text-xs font-bold border backdrop-blur-md ${categoryStyle}`}>
-                {article.category || 'News'}
+                {resolvedCategory || 'News'}
             </div>
 
             <button
