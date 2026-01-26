@@ -9,6 +9,46 @@ let isAiDisabledUntil = 0;
 let isLibreTranslateAvailable = true;
 let lastLibreTranslateCheck = 0;
 
+const VALID_CATEGORIES = [
+    'Cybersecurité',
+    'Intelligence Artificielle',
+    'Cloud',
+    'Développement',
+    'Hardware',
+    'Web',
+    'Société',
+    'Business',
+    'Autre'
+];
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeCategory(value) {
+    if (!value || typeof value !== 'string') {
+        return null;
+    }
+
+    const trimmed = value.trim().replace(/["'`]/g, '');
+    if (!trimmed) return null;
+
+    if (/spam/i.test(trimmed)) {
+        return 'Spam';
+    }
+
+    const exactMatch = VALID_CATEGORIES.find(
+        (category) => category.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (exactMatch) return exactMatch;
+
+    const matchedCategory = VALID_CATEGORIES.find((category) =>
+        new RegExp(`\\b${escapeRegExp(category)}\\b`, 'i').test(trimmed)
+    );
+
+    return matchedCategory || null;
+}
+
 function checkAiCooldown() {
     if (Date.now() < isAiDisabledUntil) {
         return true;
@@ -125,7 +165,12 @@ async function categorizeArticle(title, content) {
             ]
         });
 
-        return response.choices[0].message.content.trim();
+        const rawCategory = response.choices[0].message.content.trim();
+        const normalizedCategory = normalizeCategory(rawCategory);
+        if (!normalizedCategory) {
+            console.warn(`Categorization returned an invalid label: "${rawCategory}"`);
+        }
+        return normalizedCategory;
     } catch (error) {
         if (error.statusCode === 429) setAiCooldown();
         console.error("Categorization Error:", error.message);
