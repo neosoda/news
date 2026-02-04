@@ -70,7 +70,6 @@ async function main() {
         { name: 'Programmez!', url: 'https://www.programmez.com/rss.xml', category: 'Development' },
         { name: 'IT-Connect (Main)', url: 'https://www.it-connect.fr/feed/', category: 'IT' },
         // International Dev (New)
-        { name: 'Dev.to', url: 'https://dev.to/feed', category: 'Development' },
         { name: 'Scaleway Blog', url: 'https://www.scaleway.com/fr/blog/feed.xml', category: 'Cloud' },
         { name: 'Clever Cloud Blog', url: 'https://www.clever-cloud.com/fr/feed/', category: 'Cloud' },
         { name: 'OCTO Blog', url: 'https://blog.octo.com/feed/', category: 'IT' },
