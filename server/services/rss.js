@@ -8,6 +8,7 @@ const parser = new Parser({
 });
 const cheerio = require('cheerio');
 const axios = require('axios');
+const crypto = require('crypto');
 const { translateText, categorizeArticle } = require('./ai');
 
 const FEED_TIMEOUT_MS = 10000;
@@ -88,6 +89,30 @@ async function fetchFeedXml(source) {
 }
 
 const { URL } = require('url');
+
+
+function normalizeWhitespace(value) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    return value.replace(/\s+/g, ' ').trim();
+}
+
+function computeArticleFingerprint({ title, contentSnippet, content }) {
+    const normalizedTitle = normalizeWhitespace(title).toLowerCase();
+    const normalizedSnippet = normalizeWhitespace(contentSnippet).toLowerCase();
+    const normalizedContent = normalizeWhitespace(content).toLowerCase();
+
+    const fingerprintSource = [normalizedTitle, normalizedSnippet || normalizedContent]
+        .filter(Boolean)
+        .join('|');
+
+    if (!fingerprintSource) {
+        return null;
+    }
+
+    return crypto.createHash('sha256').update(fingerprintSource).digest('hex');
+}
 
 function normalizeUrl(url) {
     try {
@@ -189,15 +214,26 @@ async function fetchAndProcessFeed(source) {
 
             const normalizedLink = normalizeUrl(item.link);
 
-            // Check for existing article by Link (normalized) OR Title
-            // This prevents duplicates from same URL with different params AND same content with different URL
+            const articleFingerprint = computeArticleFingerprint({
+                title: item.title,
+                contentSnippet: item.contentSnippet,
+                content: item.content
+            });
+
+            // Check for existing article by normalized/original link and by semantic fingerprint.
+            // Fingerprint prevents duplicates when an article is republished under a different URL.
+            const duplicateCriteria = [
+                { link: normalizedLink },
+                { link: item.link }
+            ];
+
+            if (articleFingerprint) {
+                duplicateCriteria.push({ fingerprint: articleFingerprint });
+            }
+
             const existing = await prisma.article.findFirst({
                 where: {
-                    OR: [
-                        { link: normalizedLink },
-                        { link: item.link }, // Check original link too just in case
-                        { title: item.title } // Check strictly by title to avoid cross-posting duplicates
-                    ]
+                    OR: duplicateCriteria
                 }
             });
 
@@ -252,6 +288,7 @@ async function fetchAndProcessFeed(source) {
                         data: {
                             title: titleFr, // We store the French title
                             link: normalizedLink, // Store normalized link
+                            fingerprint: articleFingerprint,
                             date: articleDate,
                             content: contentFr,
                             sourceId: source.id,
