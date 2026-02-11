@@ -26,6 +26,7 @@ model Article {
   id          Int      @id @default(autoincrement())
   title       String
   link        String   @unique
+  fingerprint String?  @unique
   date        DateTime
   content     String?
   image       String?

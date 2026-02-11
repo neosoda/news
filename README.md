@@ -9,7 +9,7 @@ Une application web complète de veille technologique automatisée, conçue avec
 -   **Traduction Illimitée** : Intégration de **LibreTranslate** pour une traduction automatique en français sans limites de quota API.
 -   **IA Intégrée** : Résumé intelligent et analyse de sentiment des articles via l'API **Mistral AI**.
 -   **Circuit Breaker** : Gestion intelligente des limites de débit de l'IA (fallback automatique).
--   **Zéro Doublon** : Déduplication robuste basée sur les URLs des articles.
+-   **Zéro Doublon** : Déduplication robuste basée sur URL normalisée + empreinte de contenu (hash SHA-256).
 -   **Interface Premium** : Dashboard réactif et moderne (React + Tailwind) avec horodatage détaillé.
 -   **Déploiement Automatisé** : Initialisation complète de la base de données et des 58 sources tech/sécurité au lancement (Compatible Coolify).
 
