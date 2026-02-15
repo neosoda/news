@@ -3,9 +3,21 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
 import { getArticles } from '../services/api';
 import ArticleCard from '../components/ArticleCard';
-import { Loader2, TrendingUp } from 'lucide-react';
+import { Loader2, TrendingUp, Filter } from 'lucide-react';
 
-export default function Dashboard({ search }) {
+const CATEGORIES = [
+    'Cybersécurité',
+    'Intelligence Artificielle',
+    'Cloud',
+    'Development',
+    'IT',
+    'Tech News',
+    'Open Source',
+    'Legal',
+    'Education'
+];
+
+export default function Dashboard({ search, category, setCategory }) {
     const { ref, inView } = useInView();
 
     const {
@@ -15,8 +27,8 @@ export default function Dashboard({ search }) {
         isFetchingNextPage,
         status
     } = useInfiniteQuery({
-        queryKey: ['articles', search],
-        queryFn: ({ pageParam = 1 }) => getArticles(pageParam, search),
+        queryKey: ['articles', search, category],
+        queryFn: ({ pageParam = 1 }) => getArticles(pageParam, search, category),
         getNextPageParam: (lastPage) => {
             return lastPage.pagination.page < lastPage.pagination.pages ? lastPage.pagination.page + 1 : undefined;
         }
@@ -44,6 +56,37 @@ export default function Dashboard({ search }) {
                 <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-2 flex items-center space-x-3">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total</span>
                     <span className="text-xl font-black text-white">{data?.pages[0]?.pagination.total || 0}</span>
+                </div>
+            </div>
+
+            {/* Category Filter */}
+            <div className="mb-8">
+                <div className="flex items-center space-x-2 mb-4">
+                    <Filter size={16} className="text-gray-500" />
+                    <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Filtrer par catégorie</span>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                    <button
+                        onClick={() => setCategory('')}
+                        className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 ${category === ''
+                                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/30'
+                                : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                            }`}
+                    >
+                        Toutes
+                    </button>
+                    {CATEGORIES.map((cat) => (
+                        <button
+                            key={cat}
+                            onClick={() => setCategory(cat)}
+                            className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 ${category === cat
+                                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/30'
+                                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                                }`}
+                        >
+                            {cat}
+                        </button>
+                    ))}
                 </div>
             </div>
 
