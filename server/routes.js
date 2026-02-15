@@ -23,24 +23,41 @@ router.get('/articles', async (req, res) => {
     const category = req.query.category || '';
 
     const where = {};
+    const conditions = [];
+
+    // Filtre de recherche textuelle
     if (search) {
-        where.OR = [
-            { title: { contains: search } },
-            { content: { contains: search } }
-        ];
-    }
-    if (category && typeof category === 'string' && category.trim() !== '') {
-        where.OR = [
-            { category: category },
-            { source: { category: category } }
-        ];
+        conditions.push({
+            OR: [
+                { title: { contains: search, mode: 'insensitive' } },
+                { content: { contains: search, mode: 'insensitive' } }
+            ]
+        });
     }
 
-    if (req.query.bookmarked === 'true') {
-        where.isBookmarked = true;
+    // Filtre de catégorie
+    if (category && typeof category === 'string' && category.trim() !== '') {
+        conditions.push({
+            OR: [
+                { category: category },
+                { source: { category: category } }
+            ]
+        });
     }
+
+    // Filtre de favoris
+    if (req.query.bookmarked === 'true') {
+        conditions.push({ isBookmarked: true });
+    }
+
+    // Filtre de source
     if (req.query.sourceId) {
-        where.sourceId = parseInt(req.query.sourceId);
+        conditions.push({ sourceId: parseInt(req.query.sourceId) });
+    }
+
+    // Combiner toutes les conditions avec AND
+    if (conditions.length > 0) {
+        where.AND = conditions;
     }
 
     try {
@@ -115,6 +132,38 @@ router.get('/sources/refresh', async (req, res) => {
         const count = await updateAllFeeds();
         res.json({ message: `Refreshed all feeds. ${count} new articles.` });
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /articles/stats - Get article count by category
+router.get('/articles/stats', async (req, res) => {
+    try {
+        // Get all articles with their categories
+        const articles = await prisma.article.findMany({
+            select: {
+                category: true,
+                source: {
+                    select: {
+                        category: true
+                    }
+                }
+            }
+        });
+
+        // Count articles per category
+        const stats = {};
+        articles.forEach(article => {
+            const cat = article.category || article.source?.category || 'Autre';
+            stats[cat] = (stats[cat] || 0) + 1;
+        });
+
+        // Calculate total
+        const total = articles.length;
+
+        res.json({ stats, total });
+    } catch (error) {
+        console.error('Error fetching article stats:', error);
         res.status(500).json({ error: error.message });
     }
 });

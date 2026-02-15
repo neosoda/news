@@ -48,3 +48,8 @@ export const getDailyBrief = async () => {
     const { data } = await api.get('/daily-brief');
     return data;
 };
+
+export const getArticleStats = async () => {
+    const { data } = await api.get('/articles/stats');
+    return data;
+};

@@ -1,7 +1,7 @@
 import React from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
-import { getArticles } from '../services/api';
+import { getArticles, getArticleStats } from '../services/api';
 import ArticleCard from '../components/ArticleCard';
 import { Loader2, TrendingUp, Filter } from 'lucide-react';
 
@@ -19,6 +19,13 @@ const CATEGORIES = [
 
 export default function Dashboard({ search, category, setCategory }) {
     const { ref, inView } = useInView();
+
+    // Récupérer les statistiques par catégorie
+    const { data: stats } = useQuery({
+        queryKey: ['article-stats'],
+        queryFn: getArticleStats,
+        refetchInterval: 60000 // Rafraîchir toutes les minutes
+    });
 
     const {
         data,
@@ -68,23 +75,35 @@ export default function Dashboard({ search, category, setCategory }) {
                 <div className="flex flex-wrap gap-3">
                     <button
                         onClick={() => setCategory('')}
-                        className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 ${category === ''
+                        className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center space-x-2 ${category === ''
                                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/30'
                                 : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
                             }`}
                     >
-                        Toutes
+                        <span>Toutes</span>
+                        {stats && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${category === '' ? 'bg-white/20' : 'bg-white/10'
+                                }`}>
+                                {stats.total}
+                            </span>
+                        )}
                     </button>
                     {CATEGORIES.map((cat) => (
                         <button
                             key={cat}
                             onClick={() => setCategory(cat)}
-                            className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 ${category === cat
+                            className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center space-x-2 ${category === cat
                                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/30'
                                     : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
                                 }`}
                         >
-                            {cat}
+                            <span>{cat}</span>
+                            {stats && stats.stats[cat] !== undefined && (
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${category === cat ? 'bg-white/20' : 'bg-white/10'
+                                    }`}>
+                                    {stats.stats[cat]}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </div>
