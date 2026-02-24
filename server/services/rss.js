@@ -114,6 +114,20 @@ function computeArticleFingerprint({ title, contentSnippet, content }) {
     return crypto.createHash('sha256').update(fingerprintSource).digest('hex');
 }
 
+function computeArticleDedupKey({ title, contentSnippet, content }) {
+    const normalizedTitle = normalizeWhitespace(title).toLowerCase();
+    const normalizedSnippet = normalizeWhitespace(contentSnippet).toLowerCase();
+    const normalizedContent = normalizeWhitespace(content).toLowerCase();
+
+    // Keep dedup conservative: title + snippet first, then fallback to compact content extract.
+    const contentBasis = normalizedSnippet || normalizedContent.slice(0, 500);
+    if (!normalizedTitle || !contentBasis) {
+        return null;
+    }
+
+    return crypto.createHash('sha256').update(`${normalizedTitle}|${contentBasis}`).digest('hex');
+}
+
 function normalizeUrl(url) {
     try {
         const parsed = new URL(url);
@@ -220,8 +234,13 @@ async function fetchAndProcessFeed(source) {
                 content: item.content
             });
 
-            // Check for existing article by normalized/original link and by semantic fingerprint.
-            // Fingerprint prevents duplicates when an article is republished under a different URL.
+            const articleDedupKey = computeArticleDedupKey({
+                title: item.title,
+                contentSnippet: item.contentSnippet,
+                content: item.content
+            });
+
+            // Check for existing article by normalized/original link and by semantic key.
             const duplicateCriteria = [
                 { link: normalizedLink },
                 { link: item.link }
@@ -229,6 +248,10 @@ async function fetchAndProcessFeed(source) {
 
             if (articleFingerprint) {
                 duplicateCriteria.push({ fingerprint: articleFingerprint });
+            }
+
+            if (articleDedupKey) {
+                duplicateCriteria.push({ dedupKey: articleDedupKey });
             }
 
             const existing = await prisma.article.findFirst({
@@ -289,6 +312,7 @@ async function fetchAndProcessFeed(source) {
                             title: titleFr, // We store the French title
                             link: normalizedLink, // Store normalized link
                             fingerprint: articleFingerprint,
+                            dedupKey: articleDedupKey,
                             date: articleDate,
                             content: contentFr,
                             sourceId: source.id,

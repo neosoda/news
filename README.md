@@ -11,7 +11,7 @@ Une application web complète de veille technologique automatisée, conçue avec
 -   **Circuit Breaker** : Gestion intelligente des limites de débit de l'IA (fallback automatique).
 -   **Zéro Doublon** : Déduplication robuste basée sur URL normalisée + empreinte de contenu (hash SHA-256).
 -   **Interface Premium** : Dashboard réactif et moderne (React + Tailwind) avec horodatage détaillé.
--   **Déploiement Automatisé** : Initialisation complète de la base de données et des 58 sources tech/sécurité au lancement (Compatible Coolify).
+-   **Déploiement Automatisé** : Initialisation complète de la base de données et des 59 sources tech/sécurité au lancement (Compatible Coolify).
 
 ## 🛠 Stack Technique
 

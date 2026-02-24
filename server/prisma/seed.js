@@ -84,6 +84,7 @@ async function main() {
         { name: 'Framablog', url: 'https://framablog.org/feed/', category: 'Open Source' },
         { name: 'OpenClassrooms Blog', url: 'https://blog.openclassrooms.com/fr/feed/', category: 'Education' },
         { name: 'DataScientest', url: 'https://datascientest.com/feed/', category: 'Education' },
+        { name: 'dcod.ch', url: 'https://dcod.ch/feed/', category: 'Development' },
     ];
 
     console.log('Cleaning up old data...');
