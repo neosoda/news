@@ -119,24 +119,38 @@ function computeArticleDedupKey({ title, contentSnippet, content }) {
     const normalizedSnippet = normalizeWhitespace(contentSnippet).toLowerCase();
     const normalizedContent = normalizeWhitespace(content).toLowerCase();
 
-    // Keep dedup conservative: title + snippet first, then fallback to compact content extract.
-    const contentBasis = normalizedSnippet || normalizedContent.slice(0, 500);
-    if (!normalizedTitle || !contentBasis) {
+    if (!normalizedTitle) {
         return null;
     }
 
-    return crypto.createHash('sha256').update(`${normalizedTitle}|${contentBasis}`).digest('hex');
+    // Prefer title + snippet, then title + content extract, then title alone.
+    // The 'title-only:' prefix avoids false-positive collisions with title+snippet keys.
+    const contentBasis = normalizedSnippet || normalizedContent.slice(0, 500);
+    const source = contentBasis
+        ? `${normalizedTitle}|${contentBasis}`
+        : `title-only:${normalizedTitle}`;
+
+    return crypto.createHash('sha256').update(source).digest('hex');
 }
 
 function normalizeUrl(url) {
     try {
         const parsed = new URL(url);
+        // Lowercase hostname
+        parsed.hostname = parsed.hostname.toLowerCase();
+        // Remove trailing slash from pathname
+        if (parsed.pathname !== '/' && parsed.pathname.endsWith('/')) {
+            parsed.pathname = parsed.pathname.slice(0, -1);
+        }
         // Remove common tracking parameters
         const paramsToRemove = [
             'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-            'fbclid', 'gclid', 'msclkid', 'ref', 'source'
+            'fbclid', 'gclid', 'msclkid', 'ref', 'source', 'mc_cid', 'mc_eid',
+            '_ga', 'igshid', 'yclid'
         ];
         paramsToRemove.forEach(param => parsed.searchParams.delete(param));
+        // Sort remaining params for canonical form
+        parsed.searchParams.sort();
         return parsed.toString();
     } catch (e) {
         return url;
@@ -309,8 +323,9 @@ async function fetchAndProcessFeed(source) {
                 try {
                     await prisma.article.create({
                         data: {
-                            title: titleFr, // We store the French title
-                            link: normalizedLink, // Store normalized link
+                            title: titleFr,          // Titre traduit en français
+                            originalTitle: item.title || null, // Titre original (base stable pour le fingerprint)
+                            link: normalizedLink,    // URL normalisée
                             fingerprint: articleFingerprint,
                             dedupKey: articleDedupKey,
                             date: articleDate,

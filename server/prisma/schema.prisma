@@ -23,20 +23,21 @@ model Source {
 }
 
 model Article {
-  id          Int      @id @default(autoincrement())
-  title       String
-  link        String   @unique
-  fingerprint String?  @unique
-  dedupKey    String?  @unique
-  date        DateTime
-  content     String?
-  image       String?
-  summary     String? // AI Summary
-  sentiment   String? // AI Sentiment
-  keywords    String? // JSON string or comma separated
-  category    String? // Intelligent categorization
-  isBookmarked Boolean  @default(false)
-  sourceId    Int
-  source      Source   @relation(fields: [sourceId], references: [id])
-  createdAt   DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  title         String
+  originalTitle String?  // Titre original avant traduction (base stable pour fingerprint/dedupKey)
+  link          String   @unique
+  fingerprint   String?  @unique
+  dedupKey      String?  @unique
+  date          DateTime
+  content       String?
+  image         String?
+  summary       String? // AI Summary
+  sentiment     String? // AI Sentiment
+  keywords      String? // JSON string or comma separated
+  category      String? // Intelligent categorization
+  isBookmarked  Boolean  @default(false)
+  sourceId      Int
+  source        Source   @relation(fields: [sourceId], references: [id])
+  createdAt     DateTime @default(now())
 }
