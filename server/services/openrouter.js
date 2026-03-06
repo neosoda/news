@@ -1,5 +1,8 @@
 require('dotenv').config();
 
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_PRIMARY_MODEL = 'llama-3.1-8b-instant';
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
@@ -18,6 +21,7 @@ const MODEL_CASCADE = [
 const RETRYABLE_HTTP_STATUS = new Set([429, 500, 502, 503, 504]);
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES_PER_MODEL = 3;
+const MAX_GROQ_RETRIES = 2;
 
 function isBlankResponse(content) {
     return !content || typeof content !== 'string' || content.trim().length === 0;
@@ -72,10 +76,64 @@ async function requestCompletion({ model, messages, temperature = 0.2, maxTokens
     }
 }
 
-async function generateResponse(prompt, options = {}) {
-    if (!OPENROUTER_API_KEY) {
-        throw new Error('OPENROUTER_API_KEY is not set');
+async function requestGroqCompletion({ messages, temperature = 0.2, maxTokens = 700, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(GROQ_API_URL, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: GROQ_PRIMARY_MODEL,
+                messages,
+                temperature,
+                max_completion_tokens: maxTokens,
+                top_p: 1,
+                stream: false,
+                stop: null
+            }),
+            signal: controller.signal
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            const error = new Error(payload?.error?.message || `Groq error: HTTP ${response.status}`);
+            error.status = response.status;
+            error.payload = payload;
+            throw error;
+        }
+
+        const content = payload?.choices?.[0]?.message?.content;
+        if (isBlankResponse(content)) {
+            const error = new Error('Groq returned an empty response');
+            error.status = 204;
+            throw error;
+        }
+
+        return content.trim();
+    } finally {
+        clearTimeout(timeout);
     }
+}
+
+async function generateResponse(prompt, options = {}) {
+    if (!GROQ_API_KEY && !OPENROUTER_API_KEY) {
+        throw new Error('Neither GROQ_API_KEY nor OPENROUTER_API_KEY is set');
+    }
+
+    if (!OPENROUTER_API_KEY) {
+        console.warn('[LLM] OPENROUTER_API_KEY is not set, Groq-only mode enabled.');
+    }
+
+    if (!GROQ_API_KEY) {
+        console.warn('[LLM] GROQ_API_KEY is not set, falling back directly to OpenRouter.');
+    }
+
 
     if (typeof prompt !== 'string' || !prompt.trim()) {
         throw new Error('generateResponse requires a non-empty prompt string');
@@ -88,6 +146,38 @@ async function generateResponse(prompt, options = {}) {
     messages.push({ role: 'user', content: prompt.trim() });
 
     const failures = [];
+
+    if (GROQ_API_KEY) {
+        for (let attempt = 1; attempt <= MAX_GROQ_RETRIES; attempt++) {
+            try {
+                const content = await requestGroqCompletion({
+                    messages,
+                    temperature: options.temperature,
+                    maxTokens: options.maxTokens,
+                    timeoutMs: options.timeoutMs
+                });
+                console.info(`[LLM] Success with Groq model: ${GROQ_PRIMARY_MODEL} (attempt ${attempt})`);
+                return content;
+            } catch (error) {
+                failures.push({ provider: 'groq', model: GROQ_PRIMARY_MODEL, attempt, error: error.message, status: error.status || null });
+
+                const retryable = shouldRetry(error) || error.message === 'Groq returned an empty response';
+                const hasRemainingAttempts = attempt < MAX_GROQ_RETRIES;
+
+                if (retryable && hasRemainingAttempts) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+    }
+
+    if (!OPENROUTER_API_KEY) {
+        const error = new Error('Groq failed and OPENROUTER_API_KEY is not set');
+        error.failures = failures;
+        throw error;
+    }
 
     for (const model of MODEL_CASCADE) {
         for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
@@ -103,7 +193,7 @@ async function generateResponse(prompt, options = {}) {
                 console.info(`[LLM] Success with model: ${model} (attempt ${attempt})`);
                 return content;
             } catch (error) {
-                failures.push({ model, attempt, error: error.message, status: error.status || null });
+                failures.push({ provider: 'openrouter', model, attempt, error: error.message, status: error.status || null });
 
                 const retryable = shouldRetry(error) || error.message === 'OpenRouter returned an empty response';
                 const hasRemainingAttempts = attempt < MAX_RETRIES_PER_MODEL;
@@ -117,7 +207,7 @@ async function generateResponse(prompt, options = {}) {
         }
     }
 
-    const error = new Error('All OpenRouter fallback models failed');
+    const error = new Error('All LLM providers failed (Groq primary, OpenRouter fallback)');
     error.failures = failures;
     throw error;
 }
