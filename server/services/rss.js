@@ -13,6 +13,7 @@ const { translateText, categorizeArticle } = require('./ai');
 
 const FEED_TIMEOUT_MS = 10000;
 const FEED_MAX_REDIRECTS = 5;
+const MAX_FUTURE_SKEW_MS = 6 * 60 * 60 * 1000;
 
 function getResponseUrl(response, fallbackUrl) {
     return response?.request?.res?.responseUrl || fallbackUrl;
@@ -27,6 +28,43 @@ function getItemDate(item) {
         return null;
     }
     return parsed;
+}
+
+function sanitizeArticleDate(articleDate) {
+    const now = Date.now();
+    const parsedDate = articleDate instanceof Date ? articleDate : new Date(articleDate);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+        return new Date(now);
+    }
+
+    const maxAllowedDate = now + MAX_FUTURE_SKEW_MS;
+    if (parsedDate.getTime() > maxAllowedDate) {
+        return new Date(now);
+    }
+
+    return parsedDate;
+}
+
+
+async function clampFutureArticleDates() {
+    const now = new Date();
+    const maxAllowedDate = new Date(now.getTime() + MAX_FUTURE_SKEW_MS);
+
+    try {
+        const updated = await prisma.article.updateMany({
+            where: {
+                date: { gt: maxAllowedDate }
+            },
+            data: { date: now }
+        });
+
+        if (updated.count > 0) {
+            console.log(`Date cleanup complete. Normalized ${updated.count} future-dated articles.`);
+        }
+    } catch (error) {
+        console.error('Error during future-date cleanup:', error);
+    }
 }
 
 async function fetchFeedXml(source) {
@@ -223,7 +261,7 @@ async function fetchAndProcessFeed(source) {
         let skippedMissingLink = 0;
 
         for (const item of feed.items) {
-            const articleDate = getItemDate(item) || new Date();
+            const articleDate = sanitizeArticleDate(getItemDate(item) || new Date());
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -390,6 +428,7 @@ async function updateAllFeeds() {
 
     // Run cleanup before update
     await cleanupOldArticles();
+    await clampFutureArticleDates();
 
     const sources = await prisma.source.findMany();
     let totalNew = 0;
