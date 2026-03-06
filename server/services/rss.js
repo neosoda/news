@@ -46,6 +46,27 @@ function sanitizeArticleDate(articleDate) {
     return parsedDate;
 }
 
+
+async function clampFutureArticleDates() {
+    const now = new Date();
+    const maxAllowedDate = new Date(now.getTime() + MAX_FUTURE_SKEW_MS);
+
+    try {
+        const updated = await prisma.article.updateMany({
+            where: {
+                date: { gt: maxAllowedDate }
+            },
+            data: { date: now }
+        });
+
+        if (updated.count > 0) {
+            console.log(`Date cleanup complete. Normalized ${updated.count} future-dated articles.`);
+        }
+    } catch (error) {
+        console.error('Error during future-date cleanup:', error);
+    }
+}
+
 async function fetchFeedXml(source) {
     const startedAt = Date.now();
     let response;
@@ -407,6 +428,7 @@ async function updateAllFeeds() {
 
     // Run cleanup before update
     await cleanupOldArticles();
+    await clampFutureArticleDates();
 
     const sources = await prisma.source.findMany();
     let totalNew = 0;
