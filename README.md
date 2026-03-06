@@ -7,8 +7,8 @@ Une application web complète de veille technologique automatisée, conçue avec
 
 -   **Veille Automatisée** : Récupération automatique des flux RSS toutes les 30 minutes et dès le démarrage.
 -   **Traduction Illimitée** : Intégration de **LibreTranslate** pour une traduction automatique en français sans limites de quota API.
--   **IA Intégrée** : Résumé intelligent et analyse de sentiment des articles via l'API **Mistral AI**.
--   **Circuit Breaker** : Gestion intelligente des limites de débit de l'IA (fallback automatique).
+-   **IA Intégrée** : Résumé intelligent et analyse de sentiment des articles via **OpenRouter**.
+-   **Fallback en Cascade** : Bascule automatique entre plusieurs modèles en cas d'erreur, timeout ou réponse vide.
 -   **Zéro Doublon** : Déduplication robuste basée sur URL normalisée + empreinte de contenu (hash SHA-256).
 -   **Interface Premium** : Dashboard réactif et moderne (React + Tailwind) avec horodatage détaillé.
 -   **Déploiement Automatisé** : Initialisation complète de la base de données et des 59 sources tech/sécurité au lancement (Compatible Coolify).
@@ -20,7 +20,7 @@ Une application web complète de veille technologique automatisée, conçue avec
 -   **Prisma ORM** : Gestion de base de données (PostgreSQL/SQLite).
 -   **RSS Parser & Node-Cron** : Moteur d'agrégation et planification.
 -   **LibreTranslate** : Service de traduction auto-hébergé (Docker).
--   **Mistral AI SDK** : Intelligence artificielle pour les synthèses.
+-   **OpenRouter API** : Orchestration multi-modèles avec retries et fallback.
 
 ### Frontend (L'Interface)
 -   **React (Vite)** : Single Page Application (SPA).
@@ -33,7 +33,7 @@ Une application web complète de veille technologique automatisée, conçue avec
 ### Prérequis
 -   Node.js (v18+)
 -   Docker & Docker Compose
--   Une clé API Mistral AI (pour les résumés)
+-   Une clé API OpenRouter (pour les résumés)
 
 ### 1. Développement Local
 
@@ -41,7 +41,7 @@ Pour lancer le projet en local :
 
 **Backend :**
 1.  Allez dans le dossier `server`.
-2.  Créez un fichier `.env` avec votre clé API Mistral : `MISTRAL_API_KEY=votre_cle`.
+2.  Créez un fichier `.env` avec votre clé API OpenRouter : `OPENROUTER_API_KEY=votre_cle`.
 3.  Installez et lancez :
     ```bash
     npm install
@@ -62,7 +62,7 @@ Pour lancer le projet en local :
 
 Le projet est "Zero-Touch" : tout est automatisé au démarrage.
 
-1.  Configurez vos variables d'environnement (`MISTRAL_API_KEY`).
+1.  Configurez vos variables d'environnement (`OPENROUTER_API_KEY`).
 2.  Lancez les conteneurs :
     ```bash
     docker-compose up -d --build
