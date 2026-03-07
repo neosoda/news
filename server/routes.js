@@ -264,25 +264,18 @@ router.get('/daily-brief', async (req, res) => {
         }
 
         // 2. Group by category
+        // These must match exactly the labels produced by the AI classifier in services/ai.js
+        const categories = ['Cybersecurité', 'Intelligence Artificielle', 'Cloud', 'Développement', 'Hardware', 'Web', 'Société', 'Business', 'Autre'];
         const groups = {};
-        const categories = ['Cybersecurité', 'Intelligence Artificielle', 'Tech News', 'Cloud', 'Development', 'IT', 'Open Source', 'Business'];
-
-        // Initialize groups
         categories.forEach(c => groups[c] = []);
 
-        // Distribute articles
+        // Distribute articles into their category bucket (fallback to 'Autre')
         articles.forEach(article => {
-            // Normalize category or fallback
-            let cat = article.category;
-            if (!categories.includes(cat)) {
-                // Try to map or ignore
-                // For now, if "Autre" or similar, maybe skip or put in Tech News?
-                // Let's protect against undefined keys
-                if (groups[cat]) {
-                    groups[cat].push(article);
-                }
-            } else {
+            const cat = article.category || article.source?.category;
+            if (cat && groups[cat] !== undefined) {
                 groups[cat].push(article);
+            } else {
+                groups['Autre'].push(article);
             }
         });
 

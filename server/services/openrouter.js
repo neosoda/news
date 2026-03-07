@@ -3,19 +3,21 @@ require('dotenv').config();
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_PRIMARY_MODEL = 'llama-3.1-8b-instant';
+
+const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
+const MISTRAL_MODEL = 'mistral-small-latest';
+
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 const MODEL_CASCADE = [
     'mistralai/mistral-small-3.1-24b-instruct:free',
-    'openai/gpt-oss-20b:free',
     'google/gemma-3-12b-it:free',
-    'z-ai/glm-4.5-air:free',
     'qwen/qwen3-4b:free',
     'google/gemma-3-4b-it:free',
     'meta-llama/llama-3.2-3b-instruct:free',
     'google/gemma-3n-e4b-it:free',
-    'google/gemma-3n-e2b-it:free'
 ];
 
 const RETRYABLE_HTTP_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -27,11 +29,18 @@ function isBlankResponse(content) {
     return !content || typeof content !== 'string' || content.trim().length === 0;
 }
 
+// Network/server errors worth retrying on the SAME provider
 function shouldRetry(error) {
     if (error?.name === 'AbortError') return true;
     if (error?.code === 'ETIMEDOUT') return true;
-    if (typeof error?.status === 'number' && RETRYABLE_HTTP_STATUS.has(error.status)) return true;
+    // 500/502/503/504 are server-side transient errors
+    if (typeof error?.status === 'number' && [500, 502, 503, 504].includes(error.status)) return true;
     return false;
+}
+
+// Rate-limit / quota errors: skip immediately to next provider, no retry needed
+function isRateLimited(error) {
+    return typeof error?.status === 'number' && error.status === 429;
 }
 
 async function requestCompletion({ model, messages, temperature = 0.2, maxTokens = 700, timeoutMs = DEFAULT_TIMEOUT_MS }) {
@@ -121,9 +130,51 @@ async function requestGroqCompletion({ messages, temperature = 0.2, maxTokens = 
     }
 }
 
+async function requestMistralCompletion({ messages, temperature = 0.2, maxTokens = 700, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(MISTRAL_API_URL, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${MISTRAL_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: MISTRAL_MODEL,
+                messages,
+                temperature,
+                max_tokens: maxTokens
+            }),
+            signal: controller.signal
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            const error = new Error(payload?.message || `Mistral error: HTTP ${response.status}`);
+            error.status = response.status;
+            error.payload = payload;
+            throw error;
+        }
+
+        const content = payload?.choices?.[0]?.message?.content;
+        if (isBlankResponse(content)) {
+            const error = new Error('Mistral returned an empty response');
+            error.status = 204;
+            throw error;
+        }
+
+        return content.trim();
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 async function generateResponse(prompt, options = {}) {
-    if (!GROQ_API_KEY && !OPENROUTER_API_KEY) {
-        throw new Error('Neither GROQ_API_KEY nor OPENROUTER_API_KEY is set');
+    if (!GROQ_API_KEY && !MISTRAL_API_KEY && !OPENROUTER_API_KEY) {
+        throw new Error('No LLM API key configured (GROQ_API_KEY, MISTRAL_API_KEY, or OPENROUTER_API_KEY)');
     }
 
     if (!OPENROUTER_API_KEY) {
@@ -161,6 +212,7 @@ async function generateResponse(prompt, options = {}) {
             } catch (error) {
                 failures.push({ provider: 'groq', model: GROQ_PRIMARY_MODEL, attempt, error: error.message, status: error.status || null });
 
+                if (isRateLimited(error)) break; // Skip immediately, no point retrying
                 const retryable = shouldRetry(error) || error.message === 'Groq returned an empty response';
                 const hasRemainingAttempts = attempt < MAX_GROQ_RETRIES;
 
@@ -173,8 +225,36 @@ async function generateResponse(prompt, options = {}) {
         }
     }
 
+    // Try Mistral API (direct, uses MISTRAL_API_KEY)
+    if (MISTRAL_API_KEY) {
+        for (let attempt = 1; attempt <= MAX_GROQ_RETRIES; attempt++) {
+            try {
+                const content = await requestMistralCompletion({
+                    messages,
+                    temperature: options.temperature,
+                    maxTokens: options.maxTokens,
+                    timeoutMs: options.timeoutMs
+                });
+                console.info(`[LLM] Success with Mistral model: ${MISTRAL_MODEL} (attempt ${attempt})`);
+                return content;
+            } catch (error) {
+                failures.push({ provider: 'mistral', model: MISTRAL_MODEL, attempt, error: error.message, status: error.status || null });
+
+                if (isRateLimited(error)) break; // Skip immediately, quota exhausted
+                const retryable = shouldRetry(error) || error.message === 'Mistral returned an empty response';
+                const hasRemainingAttempts = attempt < MAX_GROQ_RETRIES;
+
+                if (retryable && hasRemainingAttempts) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+    }
+
     if (!OPENROUTER_API_KEY) {
-        const error = new Error('Groq failed and OPENROUTER_API_KEY is not set');
+        const error = new Error('All configured LLM providers failed (Groq, Mistral). Set OPENROUTER_API_KEY for additional fallback.');
         error.failures = failures;
         throw error;
     }
@@ -207,7 +287,7 @@ async function generateResponse(prompt, options = {}) {
         }
     }
 
-    const error = new Error('All LLM providers failed (Groq primary, OpenRouter fallback)');
+    const error = new Error('All LLM providers failed (Groq, Mistral, OpenRouter)');
     error.failures = failures;
     throw error;
 }

@@ -15,6 +15,31 @@ const CATEGORY_COLORS = {
     'Autre': 'bg-gray-500/20 text-gray-400 border-gray-500/30',
 };
 
+// Sources mises en avant avec un halo discret
+const FEATURED_SOURCES = {
+    'korben': {
+        border: 'border-violet-500/50',
+        shadow: '0 0 18px 2px rgba(139, 92, 246, 0.18)',
+        label: 'text-violet-400',
+        badge: 'bg-violet-500/10 text-violet-300 border-violet-500/30',
+    },
+    'it connect': {
+        border: 'border-cyan-500/50',
+        shadow: '0 0 18px 2px rgba(6, 182, 212, 0.18)',
+        label: 'text-cyan-400',
+        badge: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30',
+    },
+};
+
+function getFeaturedSource(sourceName) {
+    if (!sourceName) return null;
+    const lower = sourceName.toLowerCase();
+    for (const key of Object.keys(FEATURED_SOURCES)) {
+        if (lower.includes(key)) return FEATURED_SOURCES[key];
+    }
+    return null;
+}
+
 const KNOWN_CATEGORIES = Object.keys(CATEGORY_COLORS);
 
 function escapeRegExp(value) {
@@ -71,9 +96,14 @@ export default function ArticleCard({ article }) {
 
     const resolvedCategory = normalizeCategory(article.category);
     const categoryStyle = CATEGORY_COLORS[resolvedCategory] || CATEGORY_COLORS['Autre'];
+    const featured = getFeaturedSource(article.source?.name);
 
     return (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden hover:shadow-2xl transition-all duration-300 flex flex-col group relative">
+        <div
+            className={`bg-gray-800 rounded-xl overflow-hidden hover:shadow-2xl transition-all duration-300 flex flex-col group relative border ${featured ? featured.border : 'border-gray-700'
+                }`}
+            style={featured ? { boxShadow: featured.shadow } : undefined}
+        >
             {/* Category Badge */}
             <div className={`absolute top-3 left-3 z-10 px-2.5 py-1 rounded-full text-xs font-bold border backdrop-blur-md ${categoryStyle}`}>
                 {resolvedCategory || 'News'}
