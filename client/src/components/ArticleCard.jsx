@@ -19,13 +19,13 @@ const CATEGORY_COLORS = {
 const FEATURED_SOURCES = {
     'korben': {
         border: 'border-violet-500/50',
-        shadow: '0 0 18px 2px rgba(139, 92, 246, 0.18)',
+        shadow: '0 0 24px 3px rgba(139, 92, 246, 0.26)',
         label: 'text-violet-400',
         badge: 'bg-violet-500/10 text-violet-300 border-violet-500/30',
     },
     'it connect': {
         border: 'border-cyan-500/50',
-        shadow: '0 0 18px 2px rgba(6, 182, 212, 0.18)',
+        shadow: '0 0 24px 3px rgba(6, 182, 212, 0.26)',
         label: 'text-cyan-400',
         badge: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30',
     },
