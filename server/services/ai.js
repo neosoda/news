@@ -68,7 +68,7 @@ async function translateText(text) {
     const translationUrl = process.env.TRANSLATION_URL || 'https://translate.techsentinel.fr/translate';
 
     if (!isLibreTranslateAvailable && (Date.now() - lastLibreTranslateCheck < 10 * 60 * 1000)) {
-        return await fallbackToOpenRouter(text);
+        return await fallbackToLLM(text);
     }
 
     try {
@@ -86,7 +86,7 @@ async function translateText(text) {
     } catch (error) {
         if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
             if (isLibreTranslateAvailable) {
-                console.warn(`LibreTranslate unavailable at ${translationUrl}. Falling back to OpenRouter.`);
+                console.warn(`LibreTranslate unavailable at ${translationUrl}. Falling back to LLM (Groq → Mistral → OpenRouter).`);
                 isLibreTranslateAvailable = false;
                 lastLibreTranslateCheck = Date.now();
             }
@@ -95,10 +95,10 @@ async function translateText(text) {
         }
     }
 
-    return await fallbackToOpenRouter(text);
+    return await fallbackToLLM(text);
 }
 
-async function fallbackToOpenRouter(text) {
+async function fallbackToLLM(text) {
     try {
         return await generateResponse(text.substring(0, 500), {
             systemPrompt: 'Tu es un traducteur professionnel. Traduis le texte suivant en français. Ne donne que la traduction, sans explications.',
@@ -107,7 +107,7 @@ async function fallbackToOpenRouter(text) {
             timeoutMs: 15000
         });
     } catch (error) {
-        console.error('Translation Error (OpenRouter):', error.message, error.failures || '');
+        console.error('Translation Error (LLM fallback):', error.message, error.failures || '');
         return text;
     }
 }
