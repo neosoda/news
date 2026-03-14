@@ -8,37 +8,12 @@
  */
 
 const { PrismaClient } = require('@prisma/client');
-const crypto = require('crypto');
 const prisma = new PrismaClient();
-
-// --- Utilitaires (copie des fonctions de rss.js) ---
-
-function normalizeWhitespace(value) {
-    if (typeof value !== 'string') return '';
-    return value.replace(/\s+/g, ' ').trim();
-}
-
-function computeFingerprint({ title, contentSnippet, content }) {
-    const normalizedTitle = normalizeWhitespace(title).toLowerCase();
-    const normalizedSnippet = normalizeWhitespace(contentSnippet).toLowerCase();
-    const normalizedContent = normalizeWhitespace(content).toLowerCase();
-    const fingerprintSource = [normalizedTitle, normalizedSnippet || normalizedContent]
-        .filter(Boolean).join('|');
-    if (!fingerprintSource) return null;
-    return crypto.createHash('sha256').update(fingerprintSource).digest('hex');
-}
-
-function computeDedupKey({ title, contentSnippet, content }) {
-    const normalizedTitle = normalizeWhitespace(title).toLowerCase();
-    const normalizedSnippet = normalizeWhitespace(contentSnippet).toLowerCase();
-    const normalizedContent = normalizeWhitespace(content).toLowerCase();
-    if (!normalizedTitle) return null;
-    const contentBasis = normalizedSnippet || normalizedContent.slice(0, 500);
-    const source = contentBasis
-        ? `${normalizedTitle}|${contentBasis}`
-        : `title-only:${normalizedTitle}`;
-    return crypto.createHash('sha256').update(source).digest('hex');
-}
+const {
+    computeArticleFingerprint,
+    computeArticleDedupKey,
+    computeLegacyArticleDedupKey
+} = require('./services/articleDedup');
 
 // --- Données de test ---
 
@@ -50,8 +25,8 @@ const baseArticle = {
     content: ''
 };
 
-const fingerprint = computeFingerprint(baseArticle);
-const dedupKey = computeDedupKey(baseArticle);
+const fingerprint = computeArticleFingerprint(baseArticle);
+const dedupKey = computeArticleDedupKey(baseArticle);
 
 // --- Helpers ---
 
@@ -142,8 +117,8 @@ async function main() {
 
     // TEST 5 — Article entièrement différent → pas un doublon
     {
-        const differentFingerprint = computeFingerprint({ title: 'Completely Different Article', contentSnippet: 'Unrelated content here.', content: '' });
-        const differentDedupKey = computeDedupKey({ title: 'Completely Different Article', contentSnippet: 'Unrelated content here.', content: '' });
+        const differentFingerprint = computeArticleFingerprint({ title: 'Completely Different Article', contentSnippet: 'Unrelated content here.', content: '' });
+        const differentDedupKey = computeArticleDedupKey({ title: 'Completely Different Article', contentSnippet: 'Unrelated content here.', content: '' });
         const isDup = await checkDuplicate('different article', [
             { link: 'https://example.com/completely-different' },
             { fingerprint: differentFingerprint },
@@ -155,11 +130,31 @@ async function main() {
 
     // TEST 6 — Article sans snippet → dedupKey basé sur titre seul → doit être détecté
     {
-        const titleOnlyDedupKey = computeDedupKey({ title: baseArticle.title, contentSnippet: '', content: '' });
+        const titleOnlyDedupKey = computeArticleDedupKey({ title: baseArticle.title, contentSnippet: '', content: '' });
         // Cela a un préfixe 'title-only:', donc differ de la clé avec snippet
         const isDistinct = titleOnlyDedupKey !== dedupKey;
         if (isDistinct) { pass('dedupKey "titre seul" distinct du dedupKey "titre + snippet" (pas de faux positif)'); passed++; }
         else { fail('dedupKey "titre seul" identique à "titre + snippet" (collision!)'); failed++; }
+    }
+
+
+
+    // TEST 6b — Robustesse: accents / ponctuation / casse => même dedupKey
+    {
+        const variantDedupKey = computeArticleDedupKey({
+            title: 'TEST: article on A.I. Sécurity!!!',
+            contentSnippet: 'This   is a test snippet about AI security threats',
+            content: ''
+        });
+        if (variantDedupKey === dedupKey) { pass('dedupKey robuste: variantes typographiques détectées comme doublon'); passed++; }
+        else { fail('dedupKey non robuste face aux variantes typographiques'); failed++; }
+    }
+
+    // TEST 6c — Compatibilité legacy: la clé legacy reste calculable
+    {
+        const legacyKey = computeLegacyArticleDedupKey(baseArticle);
+        if (legacyKey && legacyKey !== dedupKey) { pass('Clé legacy disponible pour matcher les anciens enregistrements'); passed++; }
+        else { fail('Clé legacy indisponible ou identique (régression compatibilité)'); failed++; }
     }
 
     // TEST 7 — Contrainte P2002 : tentative d'insertion avec link en double → doit lever une erreur gérée
