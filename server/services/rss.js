@@ -8,8 +8,8 @@ const parser = new Parser({
 });
 const cheerio = require('cheerio');
 const axios = require('axios');
-const crypto = require('crypto');
 const { translateText, categorizeArticle } = require('./ai');
+const { computeArticleFingerprint, computeArticleDedupKey, computeLegacyArticleDedupKey } = require('./articleDedup');
 
 const FEED_TIMEOUT_MS = 10000;
 const FEED_MAX_REDIRECTS = 5;
@@ -129,65 +129,24 @@ async function fetchFeedXml(source) {
 const { URL } = require('url');
 
 
-function normalizeWhitespace(value) {
-    if (typeof value !== 'string') {
-        return '';
-    }
-    return value.replace(/\s+/g, ' ').trim();
-}
-
-function computeArticleFingerprint({ title, contentSnippet, content }) {
-    const normalizedTitle = normalizeWhitespace(title).toLowerCase();
-    const normalizedSnippet = normalizeWhitespace(contentSnippet).toLowerCase();
-    const normalizedContent = normalizeWhitespace(content).toLowerCase();
-
-    const fingerprintSource = [normalizedTitle, normalizedSnippet || normalizedContent]
-        .filter(Boolean)
-        .join('|');
-
-    if (!fingerprintSource) {
-        return null;
-    }
-
-    return crypto.createHash('sha256').update(fingerprintSource).digest('hex');
-}
-
-function computeArticleDedupKey({ title, contentSnippet, content }) {
-    const normalizedTitle = normalizeWhitespace(title).toLowerCase();
-    const normalizedSnippet = normalizeWhitespace(contentSnippet).toLowerCase();
-    const normalizedContent = normalizeWhitespace(content).toLowerCase();
-
-    if (!normalizedTitle) {
-        return null;
-    }
-
-    // Prefer title + snippet, then title + content extract, then title alone.
-    // The 'title-only:' prefix avoids false-positive collisions with title+snippet keys.
-    const contentBasis = normalizedSnippet || normalizedContent.slice(0, 500);
-    const source = contentBasis
-        ? `${normalizedTitle}|${contentBasis}`
-        : `title-only:${normalizedTitle}`;
-
-    return crypto.createHash('sha256').update(source).digest('hex');
-}
-
 function normalizeUrl(url) {
     try {
         const parsed = new URL(url);
-        // Lowercase hostname
-        parsed.hostname = parsed.hostname.toLowerCase();
-        // Remove trailing slash from pathname
+
+        parsed.hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+        parsed.hash = '';
+
         if (parsed.pathname !== '/' && parsed.pathname.endsWith('/')) {
             parsed.pathname = parsed.pathname.slice(0, -1);
         }
-        // Remove common tracking parameters
+
         const paramsToRemove = [
             'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
             'fbclid', 'gclid', 'msclkid', 'ref', 'source', 'mc_cid', 'mc_eid',
-            '_ga', 'igshid', 'yclid'
+            '_ga', 'igshid', 'yclid', 'output', 'spm', 'wt_mc', 'cmpid'
         ];
         paramsToRemove.forEach(param => parsed.searchParams.delete(param));
-        // Sort remaining params for canonical form
+
         parsed.searchParams.sort();
         return parsed.toString();
     } catch (e) {
@@ -292,6 +251,12 @@ async function fetchAndProcessFeed(source) {
                 content: item.content
             });
 
+            const legacyArticleDedupKey = computeLegacyArticleDedupKey({
+                title: item.title,
+                contentSnippet: item.contentSnippet,
+                content: item.content
+            });
+
             // Check for existing article by normalized/original link and by semantic key.
             const duplicateCriteria = [
                 { link: normalizedLink },
@@ -304,6 +269,10 @@ async function fetchAndProcessFeed(source) {
 
             if (articleDedupKey) {
                 duplicateCriteria.push({ dedupKey: articleDedupKey });
+            }
+
+            if (legacyArticleDedupKey && legacyArticleDedupKey !== articleDedupKey) {
+                duplicateCriteria.push({ dedupKey: legacyArticleDedupKey });
             }
 
             const existing = await prisma.article.findFirst({
