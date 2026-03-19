@@ -35,6 +35,7 @@ async function main() {
         { name: 'Google DeepMind', url: 'https://deepmind.google/discover/blog/rss.xml', category: 'AI' },
         { name: 'Microsoft AI Blog', url: 'https://blogs.microsoft.com/ai/feed/', category: 'AI' },
         { name: 'Hugging Face Blog', url: 'https://huggingface.co/blog/feed.xml', category: 'AI' },
+        { name: 'Ollama Blog', url: 'https://ollama.com/blog/rss.xml', category: 'AI' },
 
         // Actualités Tech
         { name: '01net', url: 'https://www.01net.com/info/flux-rss/', category: 'Tech News' },

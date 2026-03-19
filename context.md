@@ -9,7 +9,7 @@ Agrégateur de veille tech auto-hébergé. Il ingère des flux RSS, traduit les 
 ## Architecture Globale
 
 ```
-RSS Feeds (59 sources)
+RSS Feeds (71 sources)
        │
        ▼
   server/services/rss.js
@@ -98,4 +98,4 @@ NODE_ENV=production
 - Les résumés IA ne sont générés qu'à la **demande explicite** (endpoint `/summarize`), pas automatiquement à l'ingestion.
 - Le **brief quotidien** se génère à la demande via `/api/briefs`.
 - Les **WebSockets** sont utilisés pour le push d'articles en temps réel vers le client.
-- Le **seeding automatique** (59 sources RSS) s'exécute au premier démarrage si aucune source n'existe.
+- Le **seeding automatique** (71 sources RSS) s'exécute au premier démarrage si aucune source n'existe, incluant le blog Ollama (`https://ollama.com/blog/rss.xml`).
