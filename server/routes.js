@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { updateAllFeeds } = require('./services/rss');
 const { summarizeArticle } = require('./services/ai');
+const { fetchVideos, parseLimit, parseTopics } = require('./services/videos');
 const prisma = require('./db');
 
 const MAX_PAGE_SIZE = 100;
@@ -308,6 +309,21 @@ router.get('/daily-brief', async (req, res) => {
     } catch (error) {
         console.error('Daily Brief Error:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /videos - Curated tech/IA videos from trusted channels
+router.get('/videos', async (req, res) => {
+    try {
+        const limit = parseLimit(req.query.limit);
+        const topics = parseTopics(req.query.topics);
+        const query = typeof req.query.query === 'string' ? req.query.query : '';
+
+        const payload = await fetchVideos({ query, topics, limit });
+        res.json(payload);
+    } catch (error) {
+        console.error('Error fetching videos:', error);
+        res.status(500).json({ error: 'Unable to fetch videos at this time.' });
     }
 });
 

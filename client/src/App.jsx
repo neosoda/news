@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Sources from './pages/Sources';
 import Bookmarks from './pages/Bookmarks';
 import DailyBrief from './pages/DailyBrief';
+import Videos from './pages/Videos';
 
 function App() {
   const [search, setSearch] = useState('');
@@ -15,6 +16,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Dashboard search={search} category={category} setCategory={setCategory} />} />
         <Route path="/daily-brief" element={<DailyBrief />} />
+        <Route path="/videos" element={<Videos search={search} />} />
         <Route path="/bookmarks" element={<Bookmarks />} />
         <Route path="/sources" element={<Sources />} />
       </Routes>

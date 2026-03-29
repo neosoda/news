@@ -53,3 +53,14 @@ export const getArticleStats = async () => {
     const { data } = await api.get('/articles/stats');
     return data;
 };
+
+export const getVideos = async ({ query = '', topics = '', limit = 24 } = {}) => {
+    const { data } = await api.get('/videos', {
+        params: {
+            query,
+            topics,
+            limit
+        }
+    });
+    return data;
+};
