@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getVideos } from '../services/api';
-import { Loader2, PlayCircle, AlertCircle, Youtube } from 'lucide-react';
+import { Loader2, PlayCircle, AlertCircle, Youtube, X, ExternalLink } from 'lucide-react';
 
 const TOPIC_OPTIONS = [
     { label: 'IA', value: 'ia' },
@@ -13,6 +13,7 @@ const TOPIC_OPTIONS = [
 
 export default function Videos({ search }) {
     const [selectedTopics, setSelectedTopics] = useState(['ia', 'it', 'tech']);
+    const [activeVideo, setActiveVideo] = useState(null);
 
     const topicsParam = useMemo(() => selectedTopics.join(','), [selectedTopics]);
 
@@ -31,6 +32,36 @@ export default function Videos({ search }) {
             return [...current, topic];
         });
     };
+
+    const closePlayer = () => setActiveVideo(null);
+
+    const openPlayer = (video) => {
+        const match = video.url?.match(/[?&]v=([\w-]{6,})/);
+        if (!match) {
+            window.open(video.url, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        setActiveVideo({
+            ...video,
+            videoId: match[1]
+        });
+    };
+
+    React.useEffect(() => {
+        if (!activeVideo) {
+            return undefined;
+        }
+
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                closePlayer();
+            }
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [activeVideo]);
 
     return (
         <div>
@@ -87,11 +118,10 @@ export default function Videos({ search }) {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     {data.data.map((video) => (
-                        <a
+                        <button
                             key={video.id}
-                            href={video.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            type="button"
+                            onClick={() => openPlayer(video)}
                             className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 hover:border-red-500/30 transition-all"
                         >
                             <div className="aspect-video bg-gray-900 relative">
@@ -111,8 +141,57 @@ export default function Videos({ search }) {
                                     <p className="text-sm text-gray-400 line-clamp-2">{video.description}</p>
                                 )}
                             </div>
-                        </a>
+                        </button>
                     ))}
+                </div>
+            )}
+
+            {activeVideo && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm p-4 md:p-8"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={`Lecture vidéo : ${activeVideo.title}`}
+                    onClick={closePlayer}
+                >
+                    <div
+                        className="mx-auto mt-8 max-w-5xl bg-gray-950 border border-white/10 rounded-2xl overflow-hidden"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                            <h3 className="text-white font-semibold line-clamp-1">{activeVideo.title}</h3>
+                            <div className="flex items-center gap-2">
+                                <a
+                                    href={activeVideo.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs text-gray-300 hover:text-white px-2 py-1 rounded-lg border border-white/10 hover:border-white/30"
+                                >
+                                    <ExternalLink size={14} />
+                                    YouTube
+                                </a>
+                                <button
+                                    type="button"
+                                    onClick={closePlayer}
+                                    className="text-gray-300 hover:text-white p-1 rounded-lg border border-white/10 hover:border-white/30"
+                                    aria-label="Fermer le lecteur"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="aspect-video bg-black">
+                            <iframe
+                                src={`https://www.youtube-nocookie.com/embed/${activeVideo.videoId}`}
+                                title={activeVideo.title}
+                                className="w-full h-full"
+                                loading="lazy"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                referrerPolicy="strict-origin-when-cross-origin"
+                                allowFullScreen
+                            />
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
