@@ -9,6 +9,10 @@ const parser = new Parser({
 });
 
 const VIDEO_CHANNELS = [
+    { id: 'UCWeg2Pkate69NFdBeuRFTAw', name: 'Underscore_', topics: ['ia', 'ai', 'it', 'tech', 'dev'], language: 'fr' },
+    { id: 'UCiwOcD5f4J1A6fR_M2ZeAww', name: 'Grafikart', topics: ['it', 'dev', 'tech'], language: 'fr' },
+    { id: 'UCsE40xYfrf0ACXQHpv4C9rw', name: 'Machine Learnia', topics: ['ia', 'ai', 'ml'], language: 'fr' },
+    { id: 'UCSf0s2l1taSGxR6fVvYho6Q', name: 'Micode', topics: ['it', 'dev', 'tech'], language: 'fr' },
     { id: 'UCbfYPyITQ-7l4upoX8nvctg', name: 'Two Minute Papers', topics: ['ia', 'ai', 'ml'] },
     { id: 'UC0vBXGSyV14uvJ4hECDOl0Q', name: 'Hugging Face', topics: ['ia', 'ai', 'llm'] },
     { id: 'UCSHZKyawb77ixDdsGog4iWA', name: 'Lex Fridman', topics: ['ia', 'ai', 'tech'] },
@@ -85,6 +89,40 @@ function mapFeedItem(item, channelName) {
     };
 }
 
+function likelyFrenchText(text = '') {
+    if (!text) {
+        return false;
+    }
+
+    const normalized = normalizeTopic(text);
+
+    if (/[àâçéèêëîïôùûüÿœæ]/i.test(text)) {
+        return true;
+    }
+
+    const frenchMarkers = [
+        'avec',
+        'pour',
+        'dans',
+        'comment',
+        'francais',
+        'intelligence artificielle',
+        'developpement',
+        'tutoriel'
+    ];
+
+    return frenchMarkers.some((marker) => normalized.includes(marker));
+}
+
+function getFrenchPriorityScore(video, channel) {
+    if (channel?.language === 'fr') {
+        return 2;
+    }
+
+    const content = `${video.title || ''} ${video.description || ''}`;
+    return likelyFrenchText(content) ? 1 : 0;
+}
+
 async function fetchVideos({ query = '', topics = DEFAULT_TOPICS, limit = DEFAULT_LIMIT }) {
     const normalizedQuery = normalizeTopic(query);
     const selectedChannels = VIDEO_CHANNELS.filter((channel) => {
@@ -99,8 +137,13 @@ async function fetchVideos({ query = '', topics = DEFAULT_TOPICS, limit = DEFAUL
         selectedChannels.map(async (channel) => {
             const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.id}`;
             const feed = await parser.parseURL(url);
-
-            return (feed.items || []).map((item) => mapFeedItem(item, channel.name));
+            return (feed.items || []).map((item) => {
+                const mapped = mapFeedItem(item, channel.name);
+                return {
+                    ...mapped,
+                    frenchPriority: getFrenchPriorityScore(mapped, channel)
+                };
+            });
         })
     );
 
@@ -122,7 +165,14 @@ async function fetchVideos({ query = '', topics = DEFAULT_TOPICS, limit = DEFAUL
 
     const filtered = deduplicated
         .filter((video) => shouldIncludeVideo(video, normalizedQuery, topics))
-        .sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime())
+        .sort((a, b) => {
+            if (b.frenchPriority !== a.frenchPriority) {
+                return b.frenchPriority - a.frenchPriority;
+            }
+
+            return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
+        })
+        .map(({ frenchPriority, ...video }) => video)
         .slice(0, limit);
 
     return {
