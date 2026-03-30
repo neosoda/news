@@ -13,6 +13,19 @@ const VIDEO_CHANNELS = [
     { id: 'UCiwOcD5f4J1A6fR_M2ZeAww', name: 'Grafikart', topics: ['it', 'dev', 'tech'], language: 'fr' },
     { id: 'UCsE40xYfrf0ACXQHpv4C9rw', name: 'Machine Learnia', topics: ['ia', 'ai', 'ml'], language: 'fr' },
     { id: 'UCSf0s2l1taSGxR6fVvYho6Q', name: 'Micode', topics: ['it', 'dev', 'tech'], language: 'fr' },
+    { handle: 'ParlonsCyber', name: 'ParlonsCyber', topics: ['ia', 'ai', 'it', 'tech', 'cyber'], language: 'fr' },
+    { handle: 'Fransosiche', name: 'Fransosiche', topics: ['ia', 'ai', 'it', 'tech'], language: 'fr' },
+    { handle: 'IT-Connect', name: 'IT-Connect', topics: ['it', 'tech', 'cyber', 'dev'], language: 'fr' },
+    { handle: 'Shubham_Sharma', name: 'Shubham Sharma', topics: ['ia', 'ai', 'it', 'tech', 'dev'] },
+    { handle: 'FEU', name: 'FEU', topics: ['ia', 'ai', 'it', 'tech'], language: 'fr' },
+    { handle: 'LouisGraffeuil', name: 'Louis Graffeuil', topics: ['ia', 'ai', 'tech'], language: 'fr' },
+    { handle: 'elliottpierret', name: 'Elliott Pierret', topics: ['ia', 'ai', 'it', 'tech'], language: 'fr' },
+    { handle: 'HenriExplorIA', name: 'Henri ExplorIA', topics: ['ia', 'ai', 'llm'], language: 'fr' },
+    { handle: 'LudovicSalenne', name: 'Ludovic Salenne', topics: ['ia', 'ai', 'it', 'tech'], language: 'fr' },
+    { handle: 'yassine-sdiri', name: 'Yassine Sdiri', topics: ['ia', 'ai', 'it', 'tech'], language: 'fr' },
+    { handle: 'Franck_Scandolera', name: 'Franck Scandolera', topics: ['ia', 'ai', 'it', 'tech', 'cyber'], language: 'fr' },
+    { handle: 'DRFIRASS', name: 'DR FIRASS', topics: ['ia', 'ai', 'it', 'tech'], language: 'fr' },
+    { handle: 'Cookieconnecté', name: 'Cookieconnecté', topics: ['ia', 'ai', 'it', 'tech', 'cyber'], language: 'fr' },
     { id: 'UCbfYPyITQ-7l4upoX8nvctg', name: 'Two Minute Papers', topics: ['ia', 'ai', 'ml'] },
     { id: 'UC0vBXGSyV14uvJ4hECDOl0Q', name: 'Hugging Face', topics: ['ia', 'ai', 'llm'] },
     { id: 'UCSHZKyawb77ixDdsGog4iWA', name: 'Lex Fridman', topics: ['ia', 'ai', 'tech'] },
@@ -24,6 +37,9 @@ const VIDEO_CHANNELS = [
 const DEFAULT_TOPICS = ['ia', 'ai', 'it', 'tech'];
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 24;
+const HANDLE_CHANNEL_ID_REGEX = /"channelId":"(UC[\w-]{20,})"/;
+const HANDLE_EXTERNAL_ID_REGEX = /"externalId":"(UC[\w-]{20,})"/;
+const handleResolutionCache = new Map();
 
 function normalizeTopic(topic) {
     return topic
@@ -58,6 +74,57 @@ function parseLimit(rawLimit) {
 function extractYoutubeVideoId(link = '') {
     const match = link.match(/[?&]v=([\w-]{6,})/);
     return match ? match[1] : null;
+}
+
+async function resolveChannelIdFromHandle(handle) {
+    if (!handle) {
+        return null;
+    }
+
+    if (handleResolutionCache.has(handle)) {
+        return handleResolutionCache.get(handle);
+    }
+
+    const url = `https://www.youtube.com/@${encodeURIComponent(handle)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; NewsAI/1.0; +https://localhost)',
+                Accept: 'text/html,application/xhtml+xml'
+            },
+            signal: controller.signal
+        });
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const html = await response.text();
+        const channelMatch = html.match(HANDLE_CHANNEL_ID_REGEX) || html.match(HANDLE_EXTERNAL_ID_REGEX);
+        const channelId = channelMatch?.[1] || null;
+        handleResolutionCache.set(handle, channelId);
+        return channelId;
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function resolveFeedUrl(channel) {
+    if (channel.id) {
+        return `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.id}`;
+    }
+
+    const channelId = await resolveChannelIdFromHandle(channel.handle);
+    if (!channelId) {
+        throw new Error(`unable_to_resolve_channel_handle:${channel.handle}`);
+    }
+
+    return `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
 }
 
 function shouldIncludeVideo(item, query, topics) {
@@ -135,8 +202,8 @@ async function fetchVideos({ query = '', topics = DEFAULT_TOPICS, limit = DEFAUL
 
     const settled = await Promise.allSettled(
         selectedChannels.map(async (channel) => {
-            const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.id}`;
-            const feed = await parser.parseURL(url);
+            const feedUrl = await resolveFeedUrl(channel);
+            const feed = await parser.parseURL(feedUrl);
             return (feed.items || []).map((item) => {
                 const mapped = mapFeedItem(item, channel.name);
                 return {
