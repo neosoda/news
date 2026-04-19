@@ -5,26 +5,13 @@ import { getArticles, getArticleStats } from '../services/api';
 import ArticleCard from '../components/ArticleCard';
 import { Loader2, TrendingUp, Filter } from 'lucide-react';
 
-const CATEGORIES = [
-    'Cybersécurité',
-    'Intelligence Artificielle',
-    'Cloud',
-    'Development',
-    'IT',
-    'Tech News',
-    'Open Source',
-    'Legal',
-    'Education'
-];
-
 export default function Dashboard({ search, category, setCategory }) {
     const { ref, inView } = useInView();
 
-    // Récupérer les statistiques par catégorie
     const { data: stats } = useQuery({
         queryKey: ['article-stats'],
         queryFn: getArticleStats,
-        refetchInterval: 60000 // Rafraîchir toutes les minutes
+        refetchInterval: 60000
     });
 
     const {
@@ -37,9 +24,18 @@ export default function Dashboard({ search, category, setCategory }) {
         queryKey: ['articles', search, category],
         queryFn: ({ pageParam = 1 }) => getArticles(pageParam, search, category),
         getNextPageParam: (lastPage) => {
-            return lastPage.pagination.page < lastPage.pagination.pages ? lastPage.pagination.page + 1 : undefined;
+            return lastPage.pagination.page < lastPage.pagination.pages
+                ? lastPage.pagination.page + 1
+                : undefined;
         }
     });
+
+    const availableCategories = React.useMemo(() => {
+        const statsByCategory = stats?.stats || {};
+        return Object.keys(statsByCategory).sort(
+            (a, b) => (statsByCategory[b] || 0) - (statsByCategory[a] || 0)
+        );
+    }, [stats]);
 
     React.useEffect(() => {
         if (inView && hasNextPage) {
@@ -56,7 +52,7 @@ export default function Dashboard({ search, category, setCategory }) {
                         <span>Tendances</span>
                     </div>
                     <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tighter">
-                        Actualités <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-indigo-500 truncate inline-block">Tech & IA</span>
+                        Actualites <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-indigo-500 truncate inline-block">Tech & IA</span>
                     </h1>
                 </div>
 
@@ -66,11 +62,10 @@ export default function Dashboard({ search, category, setCategory }) {
                 </div>
             </div>
 
-            {/* Category Filter */}
             <div className="mb-8">
                 <div className="flex items-center space-x-2 mb-4">
                     <Filter size={16} className="text-gray-500" />
-                    <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Filtrer par catégorie</span>
+                    <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Filtrer par categorie</span>
                 </div>
                 <div className="flex flex-wrap gap-3">
                     <button
@@ -88,7 +83,7 @@ export default function Dashboard({ search, category, setCategory }) {
                             </span>
                         )}
                     </button>
-                    {CATEGORIES.map((cat) => (
+                    {availableCategories.map((cat) => (
                         <button
                             key={cat}
                             onClick={() => setCategory(cat)}
@@ -116,7 +111,7 @@ export default function Dashboard({ search, category, setCategory }) {
                 </div>
             ) : status === 'error' ? (
                 <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-3xl text-red-500 font-bold flex items-center justify-center">
-                    Une erreur est survenue lors de la récupération des articles.
+                    Une erreur est survenue lors de la recuperation des articles.
                 </div>
             ) : (
                 <>

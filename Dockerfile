@@ -19,7 +19,7 @@ FROM node:20-alpine
 RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
-ENV SQLITE_URL=file:./dev.db
+ENV SQLITE_URL=file:/app/prisma/dev.db
 WORKDIR /app
 
 COPY --from=server-build /app/server /app
@@ -27,4 +27,4 @@ COPY --from=client-build /app/client/dist /app/public
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx prisma db seed && node index.js"]
+CMD ["sh", "-c", "npx prisma db push && npx prisma db seed && node index.js"]

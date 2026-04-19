@@ -3,9 +3,10 @@ import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle } from 'lucide-react';
 import clsx from 'clsx';
 
-function NavItem({ to, icon: Icon, children, onClick }) {
+function NavItem({ to, icon, children, onClick }) {
     const location = useLocation();
     const isActive = location.pathname === to;
+    const IconComponent = icon;
     return (
         <Link
             to={to}
@@ -17,7 +18,7 @@ function NavItem({ to, icon: Icon, children, onClick }) {
                     : "text-gray-400 hover:bg-white/5 hover:text-white"
             )}
         >
-            <Icon size={20} className={clsx(isActive ? "text-white" : "text-gray-500")} />
+            <IconComponent size={20} className={clsx(isActive ? "text-white" : "text-gray-500")} />
             <span className="font-semibold tracking-wide">{children}</span>
         </Link>
     );

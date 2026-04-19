@@ -182,7 +182,7 @@ async function generateResponse(prompt, options = {}) {
     }
 
     if (!GROQ_API_KEY) {
-        console.warn('[LLM] GROQ_API_KEY is not set, falling back directly to OpenRouter.');
+        console.warn('[LLM] GROQ_API_KEY is not set, using Mistral/OpenRouter fallback chain.');
     }
 
 

@@ -10,10 +10,108 @@ const cheerio = require('cheerio');
 const axios = require('axios');
 const { translateText, categorizeArticle } = require('./ai');
 const { computeArticleFingerprint, computeArticleDedupKey, computeLegacyArticleDedupKey } = require('./articleDedup');
+const { validateOutboundHttpUrl } = require('./urlSafety');
 
 const FEED_TIMEOUT_MS = 10000;
 const FEED_MAX_REDIRECTS = 5;
 const MAX_FUTURE_SKEW_MS = 6 * 60 * 60 * 1000;
+const IMAGE_RECOVERY_TIMEOUT_MS = 5000;
+const IMAGE_RECOVERY_MAX_BYTES = 1024 * 1024;
+const ENABLE_IMAGE_RECOVERY_FETCH = process.env.ENABLE_IMAGE_RECOVERY_FETCH === 'true';
+const MAX_SOURCE_ERROR_LENGTH = 400;
+
+let activeUpdatePromise = null;
+
+function readPositiveIntFromEnv(name, fallback) {
+    const rawValue = process.env[name];
+    const parsed = Number.parseInt(rawValue || '', 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const SOURCE_FAILURE_COOLDOWN_MINUTES = readPositiveIntFromEnv('SOURCE_FAILURE_COOLDOWN_MINUTES', 60);
+const SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES = readPositiveIntFromEnv('SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES', 12);
+
+function normalizeErrorMessage(errorMessage) {
+    if (typeof errorMessage !== 'string' || !errorMessage.trim()) {
+        return 'unknown_error';
+    }
+    return errorMessage.trim().slice(0, MAX_SOURCE_ERROR_LENGTH);
+}
+
+function isSourceInCooldown(source, now = new Date()) {
+    if (!source?.cooldownUntil) {
+        return false;
+    }
+
+    const cooldownUntil = new Date(source.cooldownUntil);
+    if (Number.isNaN(cooldownUntil.getTime())) {
+        return false;
+    }
+
+    return cooldownUntil > now;
+}
+
+async function markSourceFailure(source, reason) {
+    if (!source?.id) {
+        return;
+    }
+
+    const failureDate = new Date();
+    const currentFailures = Number.isInteger(source.consecutiveFailures) ? source.consecutiveFailures : 0;
+    const nextFailures = currentFailures + 1;
+    const shouldDeactivate = nextFailures >= SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES;
+    const cooldownUntil = shouldDeactivate
+        ? null
+        : new Date(failureDate.getTime() + SOURCE_FAILURE_COOLDOWN_MINUTES * 60 * 1000);
+
+    try {
+        await prisma.source.update({
+            where: { id: source.id },
+            data: {
+                consecutiveFailures: nextFailures,
+                lastFailureAt: failureDate,
+                lastError: normalizeErrorMessage(reason),
+                cooldownUntil,
+                isActive: !shouldDeactivate
+            }
+        });
+    } catch (updateError) {
+        console.error(`[RSS] Failed to persist source failure state source="${source.name}" reason="${updateError.message}"`);
+        return;
+    }
+
+    if (shouldDeactivate) {
+        console.error(
+            `[RSS] Source disabled after consecutive failures source="${source.name}" failures=${nextFailures} reason="${normalizeErrorMessage(reason)}"`
+        );
+    } else {
+        console.warn(
+            `[RSS] Source cooldown applied source="${source.name}" failures=${nextFailures} cooldownUntil="${cooldownUntil.toISOString()}" reason="${normalizeErrorMessage(reason)}"`
+        );
+    }
+}
+
+async function markSourceSuccess(source) {
+    if (!source?.id) {
+        return;
+    }
+
+    try {
+        await prisma.source.update({
+            where: { id: source.id },
+            data: {
+                lastFetched: new Date(),
+                consecutiveFailures: 0,
+                lastFailureAt: null,
+                lastError: null,
+                cooldownUntil: null,
+                isActive: true
+            }
+        });
+    } catch (updateError) {
+        console.error(`[RSS] Failed to persist source success state source="${source.name}" reason="${updateError.message}"`);
+    }
+}
 
 function getResponseUrl(response, fallbackUrl) {
     return response?.request?.res?.responseUrl || fallbackUrl;
@@ -71,8 +169,20 @@ async function fetchFeedXml(source) {
     const startedAt = Date.now();
     let response;
 
+    const sourceUrlValidation = await validateOutboundHttpUrl(source.url, {
+        allowPrivateNetwork: false,
+        resolveDns: true
+    });
+    if (!sourceUrlValidation.ok) {
+        return {
+            ok: false,
+            error: `source_url_blocked:${sourceUrlValidation.reason}`,
+            durationMs: Date.now() - startedAt
+        };
+    }
+
     try {
-        response = await axios.get(source.url, {
+        response = await axios.get(sourceUrlValidation.normalizedUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'Accept': 'application/rss+xml, application/xml, text/xml, */*'
@@ -158,10 +268,15 @@ async function fetchAndProcessFeed(source) {
     const sourceLabel = `source="${source.name}" url="${source.url}"`;
     console.log(`[RSS] Fetch start ${sourceLabel}`);
 
+    const failAndExit = async (reason) => {
+        await markSourceFailure(source, reason);
+        return 0;
+    };
+
     try {
         if (!source.url) {
             console.error(`[RSS] Fetch failed ${sourceLabel} reason="missing_url"`);
-            return 0;
+            return await failAndExit('missing_url');
         }
 
         const fetchResult = await fetchFeedXml(source);
@@ -169,7 +284,7 @@ async function fetchAndProcessFeed(source) {
             console.error(
                 `[RSS] Fetch failed ${sourceLabel} reason="${fetchResult.error}" status=${fetchResult.status || 'n/a'} durationMs=${fetchResult.durationMs} finalUrl="${fetchResult.finalUrl || 'n/a'}"`
             );
-            return 0;
+            return await failAndExit(fetchResult.error || 'feed_fetch_failed');
         }
 
         console.log(
@@ -181,12 +296,12 @@ async function fetchAndProcessFeed(source) {
             feed = await parser.parseString(fetchResult.body);
         } catch (parseError) {
             console.error(`[RSS] Parse failed ${sourceLabel} reason="${parseError.message}"`);
-            return 0;
+            return await failAndExit(`parse_failed:${parseError.message}`);
         }
 
         if (!feed || !Array.isArray(feed.items)) {
             console.error(`[RSS] Parse failed ${sourceLabel} reason="invalid_feed_structure"`);
-            return 0;
+            return await failAndExit('invalid_feed_structure');
         }
 
         console.log(`[RSS] Parsed ${feed.items.length} items ${sourceLabel}`);
@@ -305,14 +420,31 @@ async function fetchAndProcessFeed(source) {
                 }
 
                 // 3. Deep recovery: Fetch page and look for og:image
-                if (!image && item.link) {
-                    try {
-                        const response = await axios.get(item.link, { timeout: 5000 });
-                        const $ = cheerio.load(response.data);
-                        image = $('meta[property="og:image"]').attr('content') ||
-                            $('meta[name="twitter:image"]').attr('content');
-                    } catch (e) {
+                if (!image && item.link && ENABLE_IMAGE_RECOVERY_FETCH) {
+                    const linkValidation = await validateOutboundHttpUrl(item.link, {
+                        allowPrivateNetwork: false,
+                        resolveDns: false
+                    });
+                    if (!linkValidation.ok) {
                         imageRecoveryFailures++;
+                    } else {
+                        try {
+                            const response = await axios.get(linkValidation.normalizedUrl, {
+                                timeout: IMAGE_RECOVERY_TIMEOUT_MS,
+                                maxContentLength: IMAGE_RECOVERY_MAX_BYTES,
+                                maxBodyLength: IMAGE_RECOVERY_MAX_BYTES,
+                                responseType: 'text',
+                                headers: {
+                                    'User-Agent': 'Mozilla/5.0 (compatible; NewsAI/1.0; +https://localhost)',
+                                    'Accept': 'text/html,application/xhtml+xml'
+                                }
+                            });
+                            const $ = cheerio.load(response.data);
+                            image = $('meta[property="og:image"]').attr('content') ||
+                                $('meta[name="twitter:image"]').attr('content');
+                        } catch (e) {
+                            imageRecoveryFailures++;
+                        }
                     }
                 }
 
@@ -357,10 +489,7 @@ async function fetchAndProcessFeed(source) {
             }
         }
 
-        await prisma.source.update({
-            where: { id: source.id },
-            data: { lastFetched: new Date() }
-        });
+        await markSourceSuccess(source);
 
         console.log(
             `[RSS] Summary ${sourceLabel} items=${feed.items.length} recent=${recentItems} added=${newArticlesCount} skippedOld=${skippedOld} skippedExisting=${skippedExisting} skippedSpam=${skippedSpam} skippedMissingLink=${skippedMissingLink} createErrors=${createErrors} itemErrors=${processingErrors} imageRecoveryFailures=${imageRecoveryFailures}`
@@ -370,7 +499,7 @@ async function fetchAndProcessFeed(source) {
 
     } catch (error) {
         console.error(`[RSS] Fetch failed ${sourceLabel} reason="${error.message}"`);
-        return 0;
+        return await failAndExit(error.message || 'unexpected_feed_failure');
     }
 }
 
@@ -393,21 +522,49 @@ async function cleanupOldArticles() {
 }
 
 async function updateAllFeeds() {
-    console.log('Starting RSS feed update...');
-
-    // Run cleanup before update
-    await cleanupOldArticles();
-    await clampFutureArticleDates();
-
-    const sources = await prisma.source.findMany();
-    let totalNew = 0;
-
-    for (const source of sources) {
-        totalNew += await fetchAndProcessFeed(source);
+    if (activeUpdatePromise) {
+        console.log('[RSS] Update already running, joining active execution.');
+        return activeUpdatePromise;
     }
 
-    console.log(`RSS Update complete. ${totalNew} new articles added.`);
-    return totalNew;
+    activeUpdatePromise = (async () => {
+        console.log('Starting RSS feed update...');
+
+        // Run cleanup before update
+        await cleanupOldArticles();
+        await clampFutureArticleDates();
+
+        const sources = await prisma.source.findMany();
+        let totalNew = 0;
+        let skippedInactive = 0;
+        let skippedCooldown = 0;
+        const now = new Date();
+
+        for (const source of sources) {
+            if (!source.isActive) {
+                skippedInactive++;
+                continue;
+            }
+
+            if (isSourceInCooldown(source, now)) {
+                skippedCooldown++;
+                continue;
+            }
+
+            totalNew += await fetchAndProcessFeed(source);
+        }
+
+        console.log(
+            `RSS Update complete. ${totalNew} new articles added. skippedInactive=${skippedInactive} skippedCooldown=${skippedCooldown}`
+        );
+        return totalNew;
+    })();
+
+    try {
+        return await activeUpdatePromise;
+    } finally {
+        activeUpdatePromise = null;
+    }
 }
 
 module.exports = { updateAllFeeds, fetchAndProcessFeed, cleanupOldArticles };

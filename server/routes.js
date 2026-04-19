@@ -1,17 +1,63 @@
 const express = require('express');
 const router = express.Router();
-const { updateAllFeeds } = require('./services/rss');
+const { updateAllFeeds, fetchAndProcessFeed } = require('./services/rss');
 const { summarizeArticle } = require('./services/ai');
 const { fetchVideos, parseLimit, parseTopics } = require('./services/videos');
+const { validateOutboundHttpUrl } = require('./services/urlSafety');
 const prisma = require('./db');
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_FUTURE_SKEW_MS = 6 * 60 * 60 * 1000;
+const MAX_SOURCE_NAME_LENGTH = 120;
+const MAX_SOURCE_CATEGORY_LENGTH = 64;
 
 function parsePositiveInt(value, fallback) {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseEntityId(value) {
+    return parsePositiveInt(value, null);
+}
+
+function normalizeInput(value, maxLength) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    return value.trim().slice(0, maxLength);
+}
+
+async function validateSourcePayload(payload) {
+    const name = normalizeInput(payload?.name, MAX_SOURCE_NAME_LENGTH);
+    const category = normalizeInput(payload?.category, MAX_SOURCE_CATEGORY_LENGTH) || 'Autre';
+    const rawUrl = normalizeInput(payload?.url, 2048);
+
+    if (!name) {
+        return { ok: false, error: 'Source name is required.' };
+    }
+
+    if (!rawUrl) {
+        return { ok: false, error: 'Source URL is required.' };
+    }
+
+    const urlValidation = await validateOutboundHttpUrl(rawUrl, {
+        allowPrivateNetwork: false,
+        resolveDns: true
+    });
+
+    if (!urlValidation.ok) {
+        return { ok: false, error: `Source URL rejected: ${urlValidation.reason}` };
+    }
+
+    return {
+        ok: true,
+        data: {
+            name,
+            category,
+            url: urlValidation.normalizedUrl
+        }
+    };
 }
 
 // Health check
@@ -100,7 +146,12 @@ router.get('/articles', async (req, res) => {
 // GET /sources - List sources
 router.get('/sources', async (req, res) => {
     try {
-        const sources = await prisma.source.findMany();
+        const sources = await prisma.source.findMany({
+            orderBy: [
+                { isActive: 'desc' },
+                { name: 'asc' }
+            ]
+        });
         res.json(sources);
     } catch (error) {
         console.error('Error fetching sources:', error);
@@ -108,15 +159,101 @@ router.get('/sources', async (req, res) => {
     }
 });
 
+// GET /sources/health - Source health overview
+router.get('/sources/health', async (req, res) => {
+    try {
+        const now = new Date();
+        const sources = await prisma.source.findMany({
+            select: {
+                id: true,
+                name: true,
+                url: true,
+                category: true,
+                isActive: true,
+                consecutiveFailures: true,
+                lastFailureAt: true,
+                lastError: true,
+                cooldownUntil: true,
+                lastFetched: true
+            },
+            orderBy: [
+                { isActive: 'desc' },
+                { consecutiveFailures: 'desc' },
+                { name: 'asc' }
+            ]
+        });
+
+        const data = sources.map((source) => {
+            const cooldownUntil = source.cooldownUntil ? new Date(source.cooldownUntil) : null;
+            const isCoolingDown = Boolean(cooldownUntil && cooldownUntil > now);
+            return {
+                ...source,
+                isCoolingDown
+            };
+        });
+
+        const summary = {
+            total: data.length,
+            active: data.filter((source) => source.isActive).length,
+            disabled: data.filter((source) => !source.isActive).length,
+            coolingDown: data.filter((source) => source.isCoolingDown).length,
+            failing: data.filter((source) => source.consecutiveFailures > 0).length
+        };
+
+        res.json({ summary, data });
+    } catch (error) {
+        console.error('Error fetching source health:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // POST /sources - Add source
 router.post('/sources', async (req, res) => {
-    const { name, url, category } = req.body;
+    const validation = await validateSourcePayload(req.body);
+    if (!validation.ok) {
+        return res.status(400).json({ error: validation.error });
+    }
+
+    const { name, url, category } = validation.data;
+
     try {
         const source = await prisma.source.create({
             data: { name, url, category }
         });
-        // Fetch immediately
-        updateAllFeeds().catch(console.error);
+
+        // Fetch only the new source to avoid overlapping a global refresh.
+        fetchAndProcessFeed(source).catch((error) => {
+            console.error(`Error fetching newly added source "${source.name}":`, error);
+        });
+
+        res.status(201).json(source);
+    } catch (error) {
+        if (error?.code === 'P2002') {
+            return res.status(409).json({ error: 'Source URL already exists.' });
+        }
+
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// POST /sources/:id/reactivate - reset failure state and reactivate source
+router.post('/sources/:id/reactivate', async (req, res) => {
+    const sourceId = parseEntityId(req.params.id);
+    if (sourceId === null) {
+        return res.status(400).json({ error: 'Invalid source id.' });
+    }
+
+    try {
+        const source = await prisma.source.update({
+            where: { id: sourceId },
+            data: {
+                isActive: true,
+                consecutiveFailures: 0,
+                lastFailureAt: null,
+                lastError: null,
+                cooldownUntil: null
+            }
+        });
         res.json(source);
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -125,9 +262,12 @@ router.post('/sources', async (req, res) => {
 
 // DELETE /sources/:id
 router.delete('/sources/:id', async (req, res) => {
-    const { id } = req.params;
+    const sourceId = parseEntityId(req.params.id);
+    if (sourceId === null) {
+        return res.status(400).json({ error: 'Invalid source id.' });
+    }
+
     try {
-        const sourceId = parseInt(id);
         await prisma.$transaction([
             prisma.article.deleteMany({ where: { sourceId } }),
             prisma.source.delete({ where: { id: sourceId } })
@@ -184,9 +324,13 @@ router.get('/articles/stats', async (req, res) => {
 
 // POST /articles/:id/summarize
 router.post('/articles/:id/summarize', async (req, res) => {
-    const { id } = req.params;
+    const articleId = parseEntityId(req.params.id);
+    if (articleId === null) {
+        return res.status(400).json({ error: 'Invalid article id.' });
+    }
+
     try {
-        const article = await prisma.article.findUnique({ where: { id: parseInt(id) } });
+        const article = await prisma.article.findUnique({ where: { id: articleId } });
         if (!article) return res.status(404).json({ error: "Article not found" });
 
         if (article.summary) {
@@ -196,7 +340,7 @@ router.post('/articles/:id/summarize', async (req, res) => {
         const summaryCallback = await summarizeArticle(article.content || article.title);
 
         const updated = await prisma.article.update({
-            where: { id: parseInt(id) },
+            where: { id: articleId },
             data: { summary: summaryCallback }
         });
 
@@ -208,13 +352,17 @@ router.post('/articles/:id/summarize', async (req, res) => {
 
 // POST /articles/:id/bookmark - Toggle bookmark
 router.post('/articles/:id/bookmark', async (req, res) => {
-    const { id } = req.params;
+    const articleId = parseEntityId(req.params.id);
+    if (articleId === null) {
+        return res.status(400).json({ error: 'Invalid article id.' });
+    }
+
     try {
-        const article = await prisma.article.findUnique({ where: { id: parseInt(id) } });
+        const article = await prisma.article.findUnique({ where: { id: articleId } });
         if (!article) return res.status(404).json({ error: "Article not found" });
 
         const updated = await prisma.article.update({
-            where: { id: parseInt(id) },
+            where: { id: articleId },
             data: { isBookmarked: !article.isBookmarked }
         });
 

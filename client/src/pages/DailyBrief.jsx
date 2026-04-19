@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getDailyBrief } from '../services/api';
 import { Loader2, Calendar, Newspaper, ArrowRight, Share2, AlertCircle } from 'lucide-react';

@@ -1,16 +1,21 @@
-version: '3.8'
-
 services:
   app:
     build:
-      context: ./server
+      context: .
       dockerfile: Dockerfile
     restart: always
+    ports:
+      - "8080:3000"
     environment:
       - PORT=3000
       - SQLITE_URL=file:/app/prisma/dev.db
+      - GROQ_API_KEY=${GROQ_API_KEY}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - TRANSLATION_URL=https://translate.techsentinel.fr/translate
+      - ENABLE_IMAGE_RECOVERY_FETCH=false
+      - SOURCE_FAILURE_COOLDOWN_MINUTES=60
+      - SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES=12
     volumes:
       - news-data:/app/prisma
     networks:

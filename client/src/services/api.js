@@ -14,8 +14,18 @@ export const getSources = async () => {
     return data;
 };
 
+export const getSourcesHealth = async () => {
+    const { data } = await api.get('/sources/health');
+    return data;
+};
+
 export const addSource = async (source) => {
     const { data } = await api.post('/sources', source);
+    return data;
+};
+
+export const reactivateSource = async (id) => {
+    const { data } = await api.post(`/sources/${id}/reactivate`);
     return data;
 };
 

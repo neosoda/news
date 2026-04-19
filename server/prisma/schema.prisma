@@ -17,6 +17,11 @@ model Source {
   url         String    @unique
   category    String    @default("General")
   image       String?   // Source logo/favicon
+  isActive    Boolean   @default(true)
+  consecutiveFailures Int @default(0)
+  lastFailureAt DateTime?
+  lastError   String?
+  cooldownUntil DateTime?
   lastFetched DateTime?
   createdAt   DateTime  @default(now())
   articles    Article[]
