@@ -20,6 +20,8 @@ const IMAGE_RECOVERY_TIMEOUT_MS = 5000;
 const IMAGE_RECOVERY_MAX_BYTES = 1024 * 1024;
 const ENABLE_IMAGE_RECOVERY_FETCH = process.env.ENABLE_IMAGE_RECOVERY_FETCH !== 'false';
 const MAX_SOURCE_ERROR_LENGTH = 400;
+const FEED_XML_CHARSET_SCAN_BYTES = 2048;
+const ENCODING_ARTIFACT_PATTERN = /[\uFFFD\u00C3\u00C2]|\u00E2\u20AC/u;
 
 let activeUpdatePromise = null;
 
@@ -396,6 +398,116 @@ async function backfillMissingArticleImagesFromSources() {
     }
 }
 
+function getDuplicateWinnerScore(article) {
+    if (!article) {
+        return Number.NEGATIVE_INFINITY;
+    }
+
+    let score = 0;
+    if (!containsEncodingArtifacts(article.title) && !containsEncodingArtifacts(article.originalTitle)) {
+        score += 100;
+    }
+    if (article.isBookmarked) {
+        score += 20;
+    }
+    if (article.summary) {
+        score += 5;
+    }
+    if (article.image) {
+        score += 3;
+    }
+    score += new Date(article.date || article.createdAt || 0).getTime() / 1_000_000_000_000;
+    return score;
+}
+
+async function collapseDuplicateArticlesBySourceNumericId() {
+    const articles = await prisma.article.findMany({
+        select: {
+            id: true,
+            sourceId: true,
+            link: true,
+            title: true,
+            originalTitle: true,
+            content: true,
+            image: true,
+            summary: true,
+            isBookmarked: true,
+            date: true,
+            createdAt: true
+        }
+    });
+
+    const groups = new Map();
+    for (const article of articles) {
+        const numericId = extractArticleNumericIdFromLink(article.link);
+        if (!numericId) {
+            continue;
+        }
+
+        const key = `${article.sourceId}:${numericId}`;
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key).push(article);
+    }
+
+    let mergedGroups = 0;
+    let removedArticles = 0;
+
+    for (const groupedArticles of groups.values()) {
+        if (groupedArticles.length < 2) {
+            continue;
+        }
+
+        mergedGroups++;
+        const sorted = [...groupedArticles].sort((a, b) => getDuplicateWinnerScore(b) - getDuplicateWinnerScore(a));
+        const winner = { ...sorted[0] };
+        const losers = sorted.slice(1);
+
+        for (const loser of losers) {
+            const updateData = {};
+            if (loser.isBookmarked && !winner.isBookmarked) {
+                updateData.isBookmarked = true;
+                winner.isBookmarked = true;
+            }
+            if (!winner.summary && loser.summary) {
+                updateData.summary = loser.summary;
+                winner.summary = loser.summary;
+            }
+            if (!winner.image && loser.image) {
+                updateData.image = loser.image;
+                winner.image = loser.image;
+            }
+            if (!winner.content && loser.content) {
+                updateData.content = loser.content;
+                winner.content = loser.content;
+            }
+            if (!winner.originalTitle && loser.originalTitle) {
+                updateData.originalTitle = loser.originalTitle;
+                winner.originalTitle = loser.originalTitle;
+            }
+
+            if (Object.keys(updateData).length > 0) {
+                await prisma.article.update({
+                    where: { id: winner.id },
+                    data: updateData
+                });
+            }
+
+            await prisma.article.delete({
+                where: { id: loser.id }
+            });
+            removedArticles++;
+        }
+    }
+
+    if (removedArticles > 0) {
+        console.log(
+            `[RSS] Collapsed duplicate articles by source numeric id. groups=${mergedGroups} removed=${removedArticles}`
+        );
+    }
+}
+
 function getResponseUrl(response, fallbackUrl) {
     return response?.request?.res?.responseUrl || fallbackUrl;
 }
@@ -425,6 +537,204 @@ function sanitizeArticleDate(articleDate) {
     }
 
     return parsedDate;
+}
+
+function containsEncodingArtifacts(value) {
+    if (typeof value !== 'string' || !value) {
+        return false;
+    }
+    return ENCODING_ARTIFACT_PATTERN.test(value);
+}
+
+function countReplacementCharacters(value) {
+    if (typeof value !== 'string' || !value) {
+        return 0;
+    }
+    const matches = value.match(/\uFFFD/g);
+    return matches ? matches.length : 0;
+}
+
+function normalizeCharsetLabel(rawCharset) {
+    if (typeof rawCharset !== 'string' || !rawCharset.trim()) {
+        return null;
+    }
+
+    const normalized = rawCharset.trim().replace(/['"]/g, '').toLowerCase();
+    if (normalized === 'utf8') {
+        return 'utf-8';
+    }
+    if (normalized === 'latin1') {
+        return 'windows-1252';
+    }
+    return normalized;
+}
+
+function extractCharsetFromContentType(contentType) {
+    if (typeof contentType !== 'string' || !contentType.trim()) {
+        return null;
+    }
+    const match = contentType.match(/charset\s*=\s*([^;]+)/i);
+    return normalizeCharsetLabel(match?.[1] || null);
+}
+
+function extractCharsetFromXmlDeclaration(bodyBuffer) {
+    if (!Buffer.isBuffer(bodyBuffer) || bodyBuffer.length === 0) {
+        return null;
+    }
+
+    const headerChunk = bodyBuffer
+        .subarray(0, FEED_XML_CHARSET_SCAN_BYTES)
+        .toString('ascii');
+
+    const match = headerChunk.match(/<\?xml[^>]*encoding=['"]([^'"]+)['"]/i);
+    return normalizeCharsetLabel(match?.[1] || null);
+}
+
+function decodeWithCharset(bodyBuffer, charset) {
+    const normalizedCharset = normalizeCharsetLabel(charset);
+    if (!normalizedCharset) {
+        return null;
+    }
+
+    try {
+        return new TextDecoder(normalizedCharset).decode(bodyBuffer);
+    } catch {
+        return null;
+    }
+}
+
+function decodeFeedBody(bodyBuffer, contentType) {
+    const headerCharset = extractCharsetFromContentType(contentType);
+    const xmlCharset = extractCharsetFromXmlDeclaration(bodyBuffer);
+    const charsetCandidates = [];
+
+    const pushCharset = (value) => {
+        const normalized = normalizeCharsetLabel(value);
+        if (!normalized || charsetCandidates.includes(normalized)) {
+            return;
+        }
+        charsetCandidates.push(normalized);
+    };
+
+    pushCharset(headerCharset);
+    pushCharset(xmlCharset);
+    pushCharset('utf-8');
+    pushCharset('windows-1252');
+
+    let selectedBody = null;
+    let selectedCharset = null;
+    let lowestReplacementCount = Number.POSITIVE_INFINITY;
+
+    for (const candidate of charsetCandidates) {
+        const decoded = decodeWithCharset(bodyBuffer, candidate);
+        if (typeof decoded !== 'string' || decoded.trim().length === 0) {
+            continue;
+        }
+
+        const replacementCount = countReplacementCharacters(decoded);
+        if (selectedBody === null || replacementCount < lowestReplacementCount) {
+            selectedBody = decoded;
+            selectedCharset = candidate;
+            lowestReplacementCount = replacementCount;
+        }
+
+        if (replacementCount === 0 && (candidate === headerCharset || candidate === xmlCharset)) {
+            break;
+        }
+    }
+
+    return {
+        body: selectedBody,
+        charset: selectedCharset || headerCharset || xmlCharset || 'unknown'
+    };
+}
+
+function sanitizeInlineText(value) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    return value
+        .replace(/\u00A0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function sanitizeRichText(value) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    return value
+        .replace(/\u00A0/g, ' ')
+        .trim();
+}
+
+function getItemTextPayload(item) {
+    if (!item || typeof item !== 'object') {
+        return { title: '', content: '' };
+    }
+
+    const title = sanitizeInlineText(typeof item.title === 'string' ? item.title : '');
+    const content = typeof item.contentSnippet === 'string' && item.contentSnippet.trim()
+        ? sanitizeRichText(item.contentSnippet)
+        : sanitizeRichText(typeof item.content === 'string' ? item.content : '');
+
+    return { title, content };
+}
+
+async function repairExistingArticleEncoding(existing, item, source, sourceFallbackImage) {
+    const shouldRepairTitle = containsEncodingArtifacts(existing?.title);
+    const shouldRepairOriginalTitle = containsEncodingArtifacts(existing?.originalTitle);
+    const shouldRepairContent = containsEncodingArtifacts(existing?.content);
+    const shouldRepairImage = !existing?.image;
+
+    if (!shouldRepairTitle && !shouldRepairOriginalTitle && !shouldRepairContent && !shouldRepairImage) {
+        return false;
+    }
+
+    const { title: itemTitle, content: itemContent } = getItemTextPayload(item);
+    const updateData = {};
+
+    if ((shouldRepairOriginalTitle || !existing.originalTitle) && itemTitle && !containsEncodingArtifacts(itemTitle)) {
+        updateData.originalTitle = itemTitle;
+    }
+
+    if (shouldRepairTitle && itemTitle && !containsEncodingArtifacts(itemTitle)) {
+        const translatedTitle = await translateText(itemTitle);
+        updateData.title = sanitizeInlineText(translatedTitle || itemTitle);
+    }
+
+    if (shouldRepairContent && itemContent && !containsEncodingArtifacts(itemContent)) {
+        const translatedContent = await translateText(itemContent);
+        updateData.content = sanitizeRichText(translatedContent || itemContent);
+    }
+
+    if (shouldRepairImage) {
+        const itemImage = extractImageFromFeedItem(item, item?.link || source?.url);
+        const finalImage = normalizeImageUrl(itemImage, item?.link || source?.url) || sourceFallbackImage || null;
+        if (finalImage) {
+            updateData.image = finalImage;
+        }
+    }
+
+    if (updateData.title) {
+        const category = await categorizeArticle(updateData.title, updateData.content || existing.content || itemContent || '');
+        if (category && category !== 'Spam') {
+            updateData.category = category;
+        }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        return false;
+    }
+
+    await prisma.article.update({
+        where: { id: existing.id },
+        data: updateData
+    });
+
+    return true;
 }
 
 
@@ -472,7 +782,7 @@ async function fetchFeedXml(source) {
             },
             timeout: FEED_TIMEOUT_MS,
             maxRedirects: FEED_MAX_REDIRECTS,
-            responseType: 'text',
+            responseType: 'arraybuffer',
             validateStatus: () => true
         });
     } catch (error) {
@@ -498,7 +808,12 @@ async function fetchFeedXml(source) {
         };
     }
 
-    const body = response.data;
+    const bodyBuffer = Buffer.isBuffer(response.data)
+        ? response.data
+        : Buffer.from(response.data || []);
+    const decodedFeed = decodeFeedBody(bodyBuffer, response.headers?.['content-type']);
+    const body = decodedFeed.body;
+
     if (!body || typeof body !== 'string' || body.trim().length === 0) {
         return {
             ok: false,
@@ -515,19 +830,49 @@ async function fetchFeedXml(source) {
         durationMs,
         finalUrl,
         contentType: response.headers?.['content-type'],
+        charset: decodedFeed.charset,
         body
     };
 }
 
 const { URL } = require('url');
 
+function sanitizeUrlArtifacts(rawUrl) {
+    if (typeof rawUrl !== 'string') {
+        return rawUrl;
+    }
+
+    return rawUrl
+        .replace(/\uFFFD/g, '')
+        .replace(/%EF%BF%BD/gi, '')
+        .replace(/\u00A0/g, ' ')
+        .replace(/%C2%A0/gi, ' ');
+}
+
+function extractArticleNumericIdFromLink(link) {
+    if (typeof link !== 'string' || !link.trim()) {
+        return null;
+    }
+
+    const sanitizedLink = sanitizeUrlArtifacts(link);
+    const match = sanitizedLink.match(/-(\d+)\.html(?:$|[?#])/i);
+    return match ? match[1] : null;
+}
 
 function normalizeUrl(url) {
     try {
-        const parsed = new URL(url);
+        const parsed = new URL(sanitizeUrlArtifacts(url));
 
         parsed.hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
         parsed.hash = '';
+
+        parsed.pathname = parsed.pathname
+            .replace(/%EF%BF%BD/gi, '')
+            .replace(/%C2%A0/gi, '-')
+            .replace(/\uFFFD/g, '')
+            .replace(/\u00A0/g, '-')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
 
         if (parsed.pathname !== '/' && parsed.pathname.endsWith('/')) {
             parsed.pathname = parsed.pathname.slice(0, -1);
@@ -573,7 +918,7 @@ async function fetchAndProcessFeed(source) {
         }
 
         console.log(
-            `[RSS] Fetch success ${sourceLabel} status=${fetchResult.status} durationMs=${fetchResult.durationMs} finalUrl="${fetchResult.finalUrl}" contentType="${fetchResult.contentType || 'unknown'}"`
+            `[RSS] Fetch success ${sourceLabel} status=${fetchResult.status} durationMs=${fetchResult.durationMs} finalUrl="${fetchResult.finalUrl}" contentType="${fetchResult.contentType || 'unknown'}" charset="${fetchResult.charset || 'unknown'}"`
         );
 
         let feed;
@@ -612,6 +957,7 @@ async function fetchAndProcessFeed(source) {
         let processingErrors = 0;
         let recentItems = 0;
         let skippedMissingLink = 0;
+        let repairedExisting = 0;
 
         for (const item of feed.items) {
             const articleDate = sanitizeArticleDate(getItemDate(item) || new Date());
@@ -669,6 +1015,16 @@ async function fetchAndProcessFeed(source) {
                 duplicateCriteria.push({ dedupKey: legacyArticleDedupKey });
             }
 
+            const linkNumericId = extractArticleNumericIdFromLink(normalizedLink) || extractArticleNumericIdFromLink(item.link);
+            if (linkNumericId) {
+                duplicateCriteria.push({
+                    AND: [
+                        { sourceId: effectiveSource.id },
+                        { link: { contains: `-${linkNumericId}.html` } }
+                    ]
+                });
+            }
+
             const existing = await prisma.article.findFirst({
                 where: {
                     OR: duplicateCriteria
@@ -676,6 +1032,16 @@ async function fetchAndProcessFeed(source) {
             });
 
             if (existing) {
+                try {
+                    const repaired = await repairExistingArticleEncoding(existing, item, effectiveSource, sourceFallbackImage);
+                    if (repaired) {
+                        repairedExisting++;
+                    }
+                } catch (repairError) {
+                    console.error(
+                        `[RSS] Existing article repair failed ${sourceLabel} articleId=${existing.id} link="${normalizedLink}" reason="${repairError.message}"`
+                    );
+                }
                 skippedExisting++;
                 continue;
             }
@@ -716,10 +1082,11 @@ async function fetchAndProcessFeed(source) {
                     }
                 }
 
-                const titleFr = await translateText(item.title);
-                // Double check translated title to be sure (optional, but let's stick to original title for duplication check)
-
-                const contentFr = await translateText(item.contentSnippet || item.content || '');
+                const { title: itemTitle, content: itemContent } = getItemTextPayload(item);
+                const titleFrRaw = await translateText(itemTitle || item.title || '');
+                const titleFr = sanitizeInlineText(titleFrRaw || itemTitle || item.title || '');
+                const contentFrRaw = await translateText(itemContent || '');
+                const contentFr = sanitizeRichText(contentFrRaw || itemContent || '');
                 const category = await categorizeArticle(titleFr, contentFr);
 
                 if (category === 'Spam') {
@@ -732,7 +1099,7 @@ async function fetchAndProcessFeed(source) {
                     await prisma.article.create({
                         data: {
                             title: titleFr,          // Titre traduit en français
-                            originalTitle: item.title || null, // Titre original (base stable pour le fingerprint)
+                            originalTitle: itemTitle || (typeof item.title === 'string' ? sanitizeInlineText(item.title) : null), // Titre original (base stable pour le fingerprint)
                             link: normalizedLink,    // URL normalisée
                             fingerprint: articleFingerprint,
                             dedupKey: articleDedupKey,
@@ -761,7 +1128,7 @@ async function fetchAndProcessFeed(source) {
         await markSourceSuccess(effectiveSource);
 
         console.log(
-            `[RSS] Summary ${sourceLabel} items=${feed.items.length} recent=${recentItems} added=${newArticlesCount} skippedOld=${skippedOld} skippedExisting=${skippedExisting} skippedSpam=${skippedSpam} skippedMissingLink=${skippedMissingLink} createErrors=${createErrors} itemErrors=${processingErrors} imageRecoveryFailures=${imageRecoveryFailures}`
+            `[RSS] Summary ${sourceLabel} items=${feed.items.length} recent=${recentItems} added=${newArticlesCount} repairedExisting=${repairedExisting} skippedOld=${skippedOld} skippedExisting=${skippedExisting} skippedSpam=${skippedSpam} skippedMissingLink=${skippedMissingLink} createErrors=${createErrors} itemErrors=${processingErrors} imageRecoveryFailures=${imageRecoveryFailures}`
         );
 
         return newArticlesCount;
@@ -804,6 +1171,7 @@ async function updateAllFeeds() {
         await clampFutureArticleDates();
         await applyKnownSourceCorrections();
         await backfillMissingArticleImagesFromSources();
+        await collapseDuplicateArticlesBySourceNumericId();
 
         const sources = await prisma.source.findMany();
         let totalNew = 0;
@@ -843,5 +1211,6 @@ module.exports = {
     fetchAndProcessFeed,
     cleanupOldArticles,
     applyKnownSourceCorrections,
-    backfillMissingArticleImagesFromSources
+    backfillMissingArticleImagesFromSources,
+    collapseDuplicateArticlesBySourceNumericId
 };
