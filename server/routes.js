@@ -4,6 +4,7 @@ const { updateAllFeeds, fetchAndProcessFeed } = require('./services/rss');
 const { summarizeArticle } = require('./services/ai');
 const { fetchVideos, parseLimit, parseTopics } = require('./services/videos');
 const { validateOutboundHttpUrl } = require('./services/urlSafety');
+const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./services/feedUrlCatalog');
 const prisma = require('./db');
 
 const MAX_PAGE_SIZE = 100;
@@ -32,6 +33,7 @@ async function validateSourcePayload(payload) {
     const name = normalizeInput(payload?.name, MAX_SOURCE_NAME_LENGTH);
     const category = normalizeInput(payload?.category, MAX_SOURCE_CATEGORY_LENGTH) || 'Autre';
     const rawUrl = normalizeInput(payload?.url, 2048);
+    const normalizedRawUrl = getCanonicalFeedUrl(rawUrl) || rawUrl;
 
     if (!name) {
         return { ok: false, error: 'Source name is required.' };
@@ -41,7 +43,12 @@ async function validateSourcePayload(payload) {
         return { ok: false, error: 'Source URL is required.' };
     }
 
-    const urlValidation = await validateOutboundHttpUrl(rawUrl, {
+    const unsupportedReason = getUnsupportedFeedReason(normalizedRawUrl);
+    if (unsupportedReason) {
+        return { ok: false, error: `Source URL unsupported: ${unsupportedReason}` };
+    }
+
+    const urlValidation = await validateOutboundHttpUrl(normalizedRawUrl, {
         allowPrivateNetwork: false,
         resolveDns: true
     });

@@ -11,13 +11,14 @@ const axios = require('axios');
 const { translateText, categorizeArticle } = require('./ai');
 const { computeArticleFingerprint, computeArticleDedupKey, computeLegacyArticleDedupKey } = require('./articleDedup');
 const { validateOutboundHttpUrl } = require('./urlSafety');
+const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./feedUrlCatalog');
 
 const FEED_TIMEOUT_MS = 10000;
 const FEED_MAX_REDIRECTS = 5;
 const MAX_FUTURE_SKEW_MS = 6 * 60 * 60 * 1000;
 const IMAGE_RECOVERY_TIMEOUT_MS = 5000;
 const IMAGE_RECOVERY_MAX_BYTES = 1024 * 1024;
-const ENABLE_IMAGE_RECOVERY_FETCH = process.env.ENABLE_IMAGE_RECOVERY_FETCH === 'true';
+const ENABLE_IMAGE_RECOVERY_FETCH = process.env.ENABLE_IMAGE_RECOVERY_FETCH !== 'false';
 const MAX_SOURCE_ERROR_LENGTH = 400;
 
 let activeUpdatePromise = null;
@@ -36,6 +37,159 @@ function normalizeErrorMessage(errorMessage) {
         return 'unknown_error';
     }
     return errorMessage.trim().slice(0, MAX_SOURCE_ERROR_LENGTH);
+}
+
+function buildSourceFaviconUrl(rawUrl) {
+    if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+        return null;
+    }
+
+    try {
+        const parsed = new URL(rawUrl.trim());
+        return `${parsed.protocol}//${parsed.hostname}/favicon.ico`;
+    } catch {
+        return null;
+    }
+}
+
+function parseSrcSetFirstCandidate(srcSet) {
+    if (typeof srcSet !== 'string' || !srcSet.trim()) {
+        return null;
+    }
+
+    const firstChunk = srcSet.split(',')[0]?.trim();
+    if (!firstChunk) {
+        return null;
+    }
+
+    return firstChunk.split(/\s+/)[0] || null;
+}
+
+function looksLikeImageUrl(rawUrl) {
+    if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+        return false;
+    }
+
+    const withoutQuery = rawUrl.split('#')[0].split('?')[0].toLowerCase();
+    return /\.(jpg|jpeg|png|gif|webp|bmp|svg|avif|ico)$/.test(withoutQuery);
+}
+
+function normalizeImageUrl(rawUrl, baseUrl) {
+    if (typeof rawUrl !== 'string') {
+        return null;
+    }
+
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed.startsWith('data:')) {
+        return null;
+    }
+
+    const protocolReady = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed;
+
+    try {
+        const parsed = baseUrl ? new URL(protocolReady, baseUrl) : new URL(protocolReady);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return null;
+        }
+        return parsed.toString();
+    } catch {
+        return null;
+    }
+}
+
+function extractImageFromHtmlFragment(html, baseUrl) {
+    if (typeof html !== 'string' || !html.trim()) {
+        return null;
+    }
+
+    try {
+        const $ = cheerio.load(html);
+        const firstImage = $('img').first();
+        const directSrc = firstImage.attr('src');
+        const lazySrc = firstImage.attr('data-src') || firstImage.attr('data-original');
+        const srcSetCandidate = parseSrcSetFirstCandidate(firstImage.attr('srcset'));
+        const rawImage = directSrc || lazySrc || srcSetCandidate;
+        return normalizeImageUrl(rawImage, baseUrl);
+    } catch {
+        return null;
+    }
+}
+
+function collectObjectImageCandidates(value) {
+    if (!value) {
+        return [];
+    }
+
+    if (typeof value === 'string') {
+        return [value];
+    }
+
+    if (Array.isArray(value)) {
+        return value.flatMap((entry) => collectObjectImageCandidates(entry));
+    }
+
+    if (typeof value === 'object') {
+        const candidates = [];
+        if (typeof value.url === 'string') {
+            candidates.push(value.url);
+        }
+        if (typeof value.href === 'string') {
+            candidates.push(value.href);
+        }
+        if (typeof value.src === 'string') {
+            candidates.push(value.src);
+        }
+        return candidates;
+    }
+
+    return [];
+}
+
+function extractImageFromFeedItem(item, baseUrl) {
+    if (!item || typeof item !== 'object') {
+        return null;
+    }
+
+    const prioritizedCandidates = [];
+    const fallbackCandidates = [];
+
+    if (item.enclosure?.url) {
+        if (item.enclosure.type?.startsWith('image') || looksLikeImageUrl(item.enclosure.url)) {
+            prioritizedCandidates.push(item.enclosure.url);
+        } else {
+            fallbackCandidates.push(item.enclosure.url);
+        }
+    }
+
+    prioritizedCandidates.push(...collectObjectImageCandidates(item['media:content']));
+    prioritizedCandidates.push(...collectObjectImageCandidates(item['media:thumbnail']));
+    prioritizedCandidates.push(...collectObjectImageCandidates(item.image));
+    prioritizedCandidates.push(...collectObjectImageCandidates(item.thumbnail));
+    prioritizedCandidates.push(...collectObjectImageCandidates(item.itunes?.image));
+
+    for (const candidate of prioritizedCandidates) {
+        const normalized = normalizeImageUrl(candidate, baseUrl);
+        if (normalized) {
+            return normalized;
+        }
+    }
+
+    const htmlImage = extractImageFromHtmlFragment(item['content:encoded'], baseUrl)
+        || extractImageFromHtmlFragment(item.content, baseUrl)
+        || extractImageFromHtmlFragment(item.contentSnippet, baseUrl)
+        || extractImageFromHtmlFragment(item.summary, baseUrl);
+    if (htmlImage) {
+        return htmlImage;
+    }
+
+    for (const candidate of fallbackCandidates) {
+        const normalized = normalizeImageUrl(candidate, baseUrl);
+        if (normalized) {
+            return normalized;
+        }
+    }
+
+    return null;
 }
 
 function isSourceInCooldown(source, now = new Date()) {
@@ -110,6 +264,135 @@ async function markSourceSuccess(source) {
         });
     } catch (updateError) {
         console.error(`[RSS] Failed to persist source success state source="${source.name}" reason="${updateError.message}"`);
+    }
+}
+
+async function applyKnownSourceCorrections() {
+    const now = new Date();
+    const sources = await prisma.source.findMany({
+        select: {
+            id: true,
+            name: true,
+            url: true,
+            isActive: true,
+            consecutiveFailures: true
+        }
+    });
+
+    for (const source of sources) {
+        const unsupportedReason = getUnsupportedFeedReason(source.url);
+        if (unsupportedReason && source.isActive) {
+            try {
+                await prisma.source.update({
+                    where: { id: source.id },
+                    data: {
+                        isActive: false,
+                        consecutiveFailures: SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES,
+                        lastFailureAt: now,
+                        lastError: `unsupported_feed_url:${unsupportedReason}`,
+                        cooldownUntil: null
+                    }
+                });
+                console.warn(
+                    `[RSS] Source auto-disabled (unsupported URL) source="${source.name}" url="${source.url}" reason="${unsupportedReason}"`
+                );
+            } catch (error) {
+                console.error(`[RSS] Failed to disable unsupported source source="${source.name}" reason="${error.message}"`);
+            }
+            continue;
+        }
+
+        const canonicalUrl = getCanonicalFeedUrl(source.url);
+        if (!canonicalUrl || canonicalUrl === source.url) {
+            continue;
+        }
+
+        try {
+            await prisma.source.update({
+                where: { id: source.id },
+                data: {
+                    url: canonicalUrl,
+                    consecutiveFailures: 0,
+                    lastFailureAt: null,
+                    lastError: null,
+                    cooldownUntil: null,
+                    isActive: true
+                }
+            });
+            console.info(`[RSS] Source URL auto-corrected source="${source.name}" from="${source.url}" to="${canonicalUrl}"`);
+        } catch (error) {
+            if (error?.code === 'P2002') {
+                try {
+                    await prisma.source.update({
+                        where: { id: source.id },
+                        data: {
+                            isActive: false,
+                            lastFailureAt: now,
+                            lastError: 'duplicate_canonical_source_url',
+                            cooldownUntil: null
+                        }
+                    });
+                } catch (secondaryError) {
+                    console.error(
+                        `[RSS] Failed to handle duplicate canonical source source="${source.name}" reason="${secondaryError.message}"`
+                    );
+                }
+                continue;
+            }
+
+            console.error(
+                `[RSS] Failed to apply source URL correction source="${source.name}" from="${source.url}" to="${canonicalUrl}" reason="${error.message}"`
+            );
+        }
+    }
+}
+
+async function backfillMissingArticleImagesFromSources() {
+    let totalBackfilled = 0;
+
+    const sources = await prisma.source.findMany({
+        select: {
+            id: true,
+            url: true,
+            image: true
+        }
+    });
+
+    for (const source of sources) {
+        const fallbackImage = normalizeImageUrl(source.image || buildSourceFaviconUrl(source.url), source.url);
+        if (!fallbackImage) {
+            continue;
+        }
+
+        if (source.image !== fallbackImage) {
+            try {
+                await prisma.source.update({
+                    where: { id: source.id },
+                    data: { image: fallbackImage }
+                });
+            } catch (error) {
+                console.error(`[RSS] Failed to set fallback source image sourceId=${source.id} reason="${error.message}"`);
+            }
+        }
+
+        const updated = await prisma.article.updateMany({
+            where: {
+                sourceId: source.id,
+                OR: [
+                    { image: null },
+                    { image: '' }
+                ]
+            },
+            data: {
+                image: fallbackImage
+            }
+        });
+
+        totalBackfilled += updated.count;
+    }
+
+    if (totalBackfilled > 0) {
+        console.log(`[RSS] Backfilled images for ${totalBackfilled} existing articles.`);
     }
 }
 
@@ -265,21 +548,23 @@ function normalizeUrl(url) {
 }
 
 async function fetchAndProcessFeed(source) {
-    const sourceLabel = `source="${source.name}" url="${source.url}"`;
+    const resolvedSourceUrl = getCanonicalFeedUrl(source.url) || source.url;
+    const effectiveSource = resolvedSourceUrl === source.url ? source : { ...source, url: resolvedSourceUrl };
+    const sourceLabel = `source="${source.name}" url="${effectiveSource.url}"`;
     console.log(`[RSS] Fetch start ${sourceLabel}`);
 
     const failAndExit = async (reason) => {
-        await markSourceFailure(source, reason);
+        await markSourceFailure(effectiveSource, reason);
         return 0;
     };
 
     try {
-        if (!source.url) {
+        if (!effectiveSource.url) {
             console.error(`[RSS] Fetch failed ${sourceLabel} reason="missing_url"`);
             return await failAndExit('missing_url');
         }
 
-        const fetchResult = await fetchFeedXml(source);
+        const fetchResult = await fetchFeedXml(effectiveSource);
         if (!fetchResult.ok) {
             console.error(
                 `[RSS] Fetch failed ${sourceLabel} reason="${fetchResult.error}" status=${fetchResult.status || 'n/a'} durationMs=${fetchResult.durationMs} finalUrl="${fetchResult.finalUrl || 'n/a'}"`
@@ -306,22 +591,16 @@ async function fetchAndProcessFeed(source) {
 
         console.log(`[RSS] Parsed ${feed.items.length} items ${sourceLabel}`);
 
-        // Update source image/logo if not set
-        if (!source.image) {
-            let sourceImage = feed.image ? feed.image.url : null;
-            if (!sourceImage) {
-                // Try to get favicon from URL
-                try {
-                    const url = new URL(source.url);
-                    sourceImage = `${url.protocol}//${url.hostname}/favicon.ico`;
-                } catch (e) { }
-            }
-            if (sourceImage) {
-                await prisma.source.update({
-                    where: { id: source.id },
-                    data: { image: sourceImage }
-                });
-            }
+        // Ensure every source has a fallback image (logo or favicon)
+        let sourceFallbackImage = normalizeImageUrl(
+            effectiveSource.image || feed.image?.url || buildSourceFaviconUrl(effectiveSource.url),
+            effectiveSource.url
+        );
+        if (sourceFallbackImage && sourceFallbackImage !== effectiveSource.image) {
+            await prisma.source.update({
+                where: { id: effectiveSource.id },
+                data: { image: sourceFallbackImage }
+            });
         }
 
         let newArticlesCount = 0;
@@ -404,20 +683,7 @@ async function fetchAndProcessFeed(source) {
             await new Promise(resolve => setTimeout(resolve, 200));
 
             try {
-                let image = null;
-                // 1. Try standard RSS enclosure/media
-                if (item.enclosure && item.enclosure.url && item.enclosure.type && item.enclosure.type.startsWith('image')) {
-                    image = item.enclosure.url;
-                } else if (item['media:content'] && item['media:content'].url) {
-                    image = item['media:content'].url;
-                }
-
-                // 2. Try parsing content snippet for <img>
-                if (!image && (item.content || item.contentSnippet)) {
-                    const $ = cheerio.load(item.content || item.contentSnippet);
-                    const firstImg = $('img').first().attr('src');
-                    if (firstImg) image = firstImg;
-                }
+                let image = extractImageFromFeedItem(item, item.link || effectiveSource.url);
 
                 // 3. Deep recovery: Fetch page and look for og:image
                 if (!image && item.link && ENABLE_IMAGE_RECOVERY_FETCH) {
@@ -440,8 +706,10 @@ async function fetchAndProcessFeed(source) {
                                 }
                             });
                             const $ = cheerio.load(response.data);
-                            image = $('meta[property="og:image"]').attr('content') ||
+                            const metaImage = $('meta[property="og:image"]').attr('content') ||
                                 $('meta[name="twitter:image"]').attr('content');
+                            image = normalizeImageUrl(metaImage, linkValidation.normalizedUrl) ||
+                                extractImageFromHtmlFragment(response.data, linkValidation.normalizedUrl);
                         } catch (e) {
                             imageRecoveryFailures++;
                         }
@@ -460,6 +728,7 @@ async function fetchAndProcessFeed(source) {
                 }
 
                 try {
+                    const finalImage = normalizeImageUrl(image, item.link || effectiveSource.url) || sourceFallbackImage;
                     await prisma.article.create({
                         data: {
                             title: titleFr,          // Titre traduit en français
@@ -469,9 +738,9 @@ async function fetchAndProcessFeed(source) {
                             dedupKey: articleDedupKey,
                             date: articleDate,
                             content: contentFr,
-                            sourceId: source.id,
-                            image: image,
-                            category: category || source.category
+                            sourceId: effectiveSource.id,
+                            image: finalImage,
+                            category: category || effectiveSource.category
                         }
                     });
                     newArticlesCount++;
@@ -489,7 +758,7 @@ async function fetchAndProcessFeed(source) {
             }
         }
 
-        await markSourceSuccess(source);
+        await markSourceSuccess(effectiveSource);
 
         console.log(
             `[RSS] Summary ${sourceLabel} items=${feed.items.length} recent=${recentItems} added=${newArticlesCount} skippedOld=${skippedOld} skippedExisting=${skippedExisting} skippedSpam=${skippedSpam} skippedMissingLink=${skippedMissingLink} createErrors=${createErrors} itemErrors=${processingErrors} imageRecoveryFailures=${imageRecoveryFailures}`
@@ -533,6 +802,8 @@ async function updateAllFeeds() {
         // Run cleanup before update
         await cleanupOldArticles();
         await clampFutureArticleDates();
+        await applyKnownSourceCorrections();
+        await backfillMissingArticleImagesFromSources();
 
         const sources = await prisma.source.findMany();
         let totalNew = 0;
@@ -567,4 +838,10 @@ async function updateAllFeeds() {
     }
 }
 
-module.exports = { updateAllFeeds, fetchAndProcessFeed, cleanupOldArticles };
+module.exports = {
+    updateAllFeeds,
+    fetchAndProcessFeed,
+    cleanupOldArticles,
+    applyKnownSourceCorrections,
+    backfillMissingArticleImagesFromSources
+};

@@ -4,14 +4,14 @@ const prisma = new PrismaClient();
 async function main() {
     const sources = [
         // Cybersecurity
-        { name: 'CERT-FR Alertes', url: 'https://www.cert.ssi.gouv.fr/feed/alertes/', category: 'Cybersecurité' },
-        { name: 'CERT-FR Avis', url: 'https://www.cert.ssi.gouv.fr/feed/avis/', category: 'Cybersecurité' },
-        { name: 'Cybermalveillance.gouv.fr', url: 'https://www.cybermalveillance.gouv.fr/feed', category: 'Cybersecurité' },
-        { name: 'ESET Blog Security', url: 'https://www.eset.com/fr/rss/', category: 'Cybersecurité' },
-        { name: 'Le Monde Informatique - Sécurité', url: 'https://www.lemondeinformatique.fr/flux-rss/thematique/securite/flux.xml', category: 'Cybersecurité' },
+        { name: 'CERT-FR Alertes', url: 'https://cert.ssi.gouv.fr/alerte/feed/', category: 'Cybersecurité' },
+        { name: 'CERT-FR Avis', url: 'https://cert.ssi.gouv.fr/avis/feed/', category: 'Cybersecurité' },
+        { name: 'Cybermalveillance.gouv.fr', url: 'https://www.cybermalveillance.gouv.fr/feed/atom-flux-actualites', category: 'Cybersecurité' },
+        { name: 'ESET Blog Security', url: 'http://feeds.feedburner.com/eset/blog?format=xml', category: 'Cybersecurité' },
+        { name: 'Le Monde Informatique - Sécurité', url: 'https://www.lemondeinformatique.fr/flux-rss/thematique/securite/rss.xml', category: 'Cybersecurité' },
         { name: 'Cyber.gouv.fr', url: 'https://cyber.gouv.fr/rss.xml', category: 'Cybersecurité' },
         { name: 'ZATAZ (RSS)', url: 'https://www.zataz.com/rss/zataz-news.rss', category: 'Cybersecurité' },
-        { name: 'SecurityWeek', url: 'https://www.securityweek.com/rss', category: 'Cybersecurité' },
+        { name: 'SecurityWeek', url: 'https://www.securityweek.com/feed/', category: 'Cybersecurité' },
         { name: 'The Hacker News', url: 'https://feeds.feedburner.com/TheHackersNews', category: 'Cybersecurité' },
         { name: 'UnderNews', url: 'https://www.undernews.fr/feed', category: 'Cybersecurité' },
         { name: 'Malekal', url: 'https://www.malekal.com/feed/', category: 'Cybersecurité' },
