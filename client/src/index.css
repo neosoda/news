@@ -4,34 +4,54 @@
 
 @layer base {
   :root {
-    --brand-primary: #3b82f6;
-    --brand-secondary: #8b5cf6;
-    --bg-dark: #030712;
-    --bg-darker: #020617;
-    --glass-bg: rgba(17, 24, 39, 0.7);
-    --glass-border: rgba(255, 255, 255, 0.1);
+    --brand-primary: #38bdf8;
+    --brand-secondary: #f59e0b;
+    --bg-dark: #080b10;
+    --bg-darker: #05070b;
+    --glass-bg: rgba(14, 19, 28, 0.78);
+    --glass-border: rgba(148, 163, 184, 0.16);
+  }
+
+  html {
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-gray-950 text-gray-100 antialiased selection:bg-blue-500/30 selection:text-blue-200;
+    @apply bg-[#080b10] text-slate-100 antialiased selection:bg-cyan-400/25 selection:text-cyan-100;
     background-image:
-      radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.1) 0, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0, transparent 50%);
+      linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px),
+      radial-gradient(at 18% 0%, rgba(56, 189, 248, 0.14) 0, transparent 34%),
+      radial-gradient(at 90% 18%, rgba(245, 158, 11, 0.08) 0, transparent 28%),
+      linear-gradient(180deg, #080b10 0%, #0b1017 48%, #07090d 100%);
+    background-size: 36px 36px, 36px 36px, auto, auto, auto;
     background-attachment: fixed;
+  }
+
+  * {
+    scrollbar-color: rgba(148, 163, 184, 0.36) rgba(8, 11, 16, 0.4);
   }
 }
 
 @layer components {
   .glass-card {
-    @apply bg-gray-900/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+    @apply bg-[#0e131c]/[0.85] backdrop-blur-xl border border-slate-500/15 shadow-2xl shadow-black/30;
   }
 
   .glass-header {
-    @apply bg-gray-950/80 backdrop-blur-md border-b border-white/5;
+    @apply bg-[#080b10]/[0.82] backdrop-blur-xl border-b border-slate-500/15;
   }
 
   .glass-sidebar {
-    @apply bg-gray-950/90 backdrop-blur-lg border-r border-white/5;
+    @apply bg-[#070a0f]/[0.94] backdrop-blur-xl border-r border-slate-500/15;
+  }
+
+  .news-panel {
+    @apply bg-[#0d121a]/[0.82] border border-slate-500/15 shadow-xl shadow-black/20;
+  }
+
+  .news-chip {
+    @apply border border-slate-500/15 bg-slate-400/5 text-slate-300;
   }
 }
 

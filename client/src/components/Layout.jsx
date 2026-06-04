@@ -12,14 +12,14 @@ function NavItem({ to, icon, children, onClick }) {
             to={to}
             onClick={onClick}
             className={clsx(
-                "flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-300",
+                "flex items-center space-x-3 px-4 py-3 rounded-lg border transition-all duration-300",
                 isActive
-                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/20"
-                    : "text-gray-400 hover:bg-white/5 hover:text-white"
+                    ? "bg-cyan-400/10 text-white border-cyan-300/25 shadow-[inset_3px_0_0_rgba(34,211,238,0.9)]"
+                    : "text-slate-400 border-transparent hover:bg-white/[0.045] hover:text-white hover:border-slate-500/15"
             )}
         >
-            <IconComponent size={20} className={clsx(isActive ? "text-white" : "text-gray-500")} />
-            <span className="font-semibold tracking-wide">{children}</span>
+            <IconComponent size={19} className={clsx(isActive ? "text-cyan-200" : "text-slate-500")} />
+            <span className="text-sm font-semibold tracking-wide">{children}</span>
         </Link>
     );
 }
@@ -43,33 +43,34 @@ export default function Layout({ children, onSearch }) {
     };
 
     return (
-        <div className="flex h-screen bg-gray-950 text-gray-100 font-sans overflow-hidden">
-            {/* Overlay for mobile */}
+        <div className="flex h-screen bg-[#080b10] text-slate-100 font-sans overflow-hidden">
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+                    className="fixed inset-0 bg-black/[0.65] backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
                     onClick={closeSidebar}
                 />
             )}
 
-            {/* Sidebar */}
             <aside className={clsx(
                 "fixed inset-y-0 left-0 z-50 w-72 glass-sidebar flex-shrink-0 flex flex-col transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static",
                 isSidebarOpen ? "translate-x-0" : "-translate-x-full"
             )}>
-                <div className="p-8 flex items-center justify-between border-b border-white/5">
+                <div className="p-7 flex items-center justify-between border-b border-slate-500/15">
                     <div className="flex items-center space-x-3">
-                        <div className="bg-blue-600 p-2 rounded-lg shadow-lg shadow-blue-600/20">
-                            <Newspaper className="text-white" size={24} />
+                        <div className="bg-cyan-400/10 border border-cyan-300/25 p-2 rounded-lg shadow-lg shadow-cyan-950/30">
+                            <Newspaper className="text-cyan-200" size={24} />
                         </div>
-                        <span className="text-2xl font-black tracking-tighter text-white">NewsAI</span>
+                        <div>
+                            <span className="block text-2xl font-black tracking-tighter text-white leading-none">NewsAI</span>
+                            <span className="block text-[10px] uppercase tracking-[0.28em] text-slate-500 mt-1">Veille techno</span>
+                        </div>
                     </div>
-                    <button onClick={closeSidebar} className="lg:hidden text-gray-400 hover:text-white">
+                    <button onClick={closeSidebar} className="lg:hidden text-slate-400 hover:text-white">
                         <X size={24} />
                     </button>
                 </div>
 
-                <nav className="flex-1 p-6 space-y-3 mt-4">
+                <nav className="flex-1 p-5 space-y-2.5 mt-3">
                     <NavItem to="/" icon={LayoutDashboard} onClick={closeSidebar}>Articles</NavItem>
                     <NavItem to="/daily-brief" icon={Zap} onClick={closeSidebar}>Brief IA</NavItem>
                     <NavItem to="/videos" icon={PlayCircle} onClick={closeSidebar}>Vidéos</NavItem>
@@ -77,53 +78,52 @@ export default function Layout({ children, onSearch }) {
                     <NavItem to="/sources" icon={Rss} onClick={closeSidebar}>Sources</NavItem>
                 </nav>
 
-                <div className="p-6 border-t border-white/5">
-                    <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                        <p className="text-xs text-gray-500 font-medium uppercase tracking-widest mb-1">Status</p>
+                <div className="p-5 border-t border-slate-500/15">
+                    <div className="news-panel rounded-xl p-4">
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.22em] mb-2">Status</p>
                         <div className="flex items-center space-x-2">
-                            <div className="w-2 h-2 rounded-full bg-green-500 shadow-sm shadow-green-500/50"></div>
-                            <span className="text-sm font-semibold text-gray-300">Système Opérationnel</span>
+                            <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
+                            <span className="text-sm font-semibold text-slate-300">Système opérationnel</span>
                         </div>
                     </div>
                 </div>
             </aside>
 
-            {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0 relative">
-                <header className="h-20 glass-header flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30">
+                <header className="h-[72px] glass-header flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30">
                     <div className="flex items-center space-x-4">
                         <button
                             onClick={toggleSidebar}
-                            className="p-2 -ml-2 text-gray-400 hover:text-white lg:hidden transition-colors"
+                            className="p-2 -ml-2 text-slate-400 hover:text-white lg:hidden transition-colors"
                         >
                             <Menu size={24} />
                         </button>
-                        <h2 className="text-xl font-bold text-white hidden sm:block whitespace-nowrap">
+                        <h2 className="text-lg font-black text-white hidden sm:block whitespace-nowrap tracking-tight">
                             {getPageTitle()}
                         </h2>
                     </div>
 
                     <div className="relative flex-1 max-w-xl mx-4">
                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <Search className="h-5 w-5 text-gray-500" />
+                            <Search className="h-5 w-5 text-slate-500" />
                         </div>
                         <input
                             type="text"
                             onChange={(e) => onSearch && onSearch(e.target.value)}
-                            className="block w-full pl-12 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-2xl leading-5 text-gray-100 placeholder-gray-500 focus:outline-none focus:bg-white/10 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-300 text-sm sm:text-base shadow-inner"
+                            className="block w-full pl-12 pr-4 py-2.5 bg-slate-950/40 border border-slate-500/15 rounded-xl leading-5 text-slate-100 placeholder-slate-500 focus:outline-none focus:bg-slate-900/70 focus:ring-2 focus:ring-cyan-400/25 focus:border-cyan-300/40 transition-all duration-300 text-sm sm:text-base shadow-inner"
                             placeholder="Rechercher des actualités..."
                         />
                     </div>
 
                     <div className="hidden md:flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-900/20">
+                        <div className="w-10 h-10 rounded-xl bg-cyan-400/10 border border-cyan-300/25 flex items-center justify-center text-cyan-100 font-black shadow-lg shadow-cyan-950/20">
                             N
                         </div>
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth">
-                    <div className="max-w-7xl mx-auto">
+                <main className="flex-1 overflow-y-auto p-4 lg:p-7 scroll-smooth">
+                    <div className="max-w-[1500px] mx-auto">
                         {children}
                     </div>
                 </main>
