@@ -9,7 +9,12 @@ const parser = new Parser({
 const cheerio = require('cheerio');
 const axios = require('axios');
 const { translateText, categorizeArticle } = require('./ai');
-const { computeArticleFingerprint, computeArticleDedupKey, computeLegacyArticleDedupKey } = require('./articleDedup');
+const {
+    computeArticleFingerprint,
+    computeArticleDedupKey,
+    computeContentAwareArticleDedupKey,
+    computeLegacyArticleDedupKey
+} = require('./articleDedup');
 const { validateOutboundHttpUrl } = require('./urlSafety');
 const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./feedUrlCatalog');
 
@@ -991,6 +996,12 @@ async function fetchAndProcessFeed(source) {
                 content: item.content
             });
 
+            const contentAwareArticleDedupKey = computeContentAwareArticleDedupKey({
+                title: item.title,
+                contentSnippet: item.contentSnippet,
+                content: item.content
+            });
+
             const legacyArticleDedupKey = computeLegacyArticleDedupKey({
                 title: item.title,
                 contentSnippet: item.contentSnippet,
@@ -1009,6 +1020,10 @@ async function fetchAndProcessFeed(source) {
 
             if (articleDedupKey) {
                 duplicateCriteria.push({ dedupKey: articleDedupKey });
+            }
+
+            if (contentAwareArticleDedupKey && contentAwareArticleDedupKey !== articleDedupKey) {
+                duplicateCriteria.push({ dedupKey: contentAwareArticleDedupKey });
             }
 
             if (legacyArticleDedupKey && legacyArticleDedupKey !== articleDedupKey) {

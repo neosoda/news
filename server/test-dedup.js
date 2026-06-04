@@ -12,6 +12,7 @@ const prisma = new PrismaClient();
 const {
     computeArticleFingerprint,
     computeArticleDedupKey,
+    computeContentAwareArticleDedupKey,
     computeLegacyArticleDedupKey
 } = require('./services/articleDedup');
 
@@ -155,6 +156,31 @@ async function main() {
         const legacyKey = computeLegacyArticleDedupKey(baseArticle);
         if (legacyKey && legacyKey !== dedupKey) { pass('Clé legacy disponible pour matcher les anciens enregistrements'); passed++; }
         else { fail('Clé legacy indisponible ou identique (régression compatibilité)'); failed++; }
+    }
+
+    // TEST 6d — Même titre fort, snippet différent => même nouvelle clé, ancienne clé encore calculable
+    {
+        const first = {
+            title: 'OpenAI lance un nouveau modèle de raisonnement pour les développeurs',
+            contentSnippet: 'Premier extrait publié par une source.',
+            content: ''
+        };
+        const second = {
+            title: 'OpenAI lance un nouveau modele de raisonnement pour les developpeurs',
+            contentSnippet: 'Extrait différent publié par une autre source.',
+            content: ''
+        };
+        const firstKey = computeArticleDedupKey(first);
+        const secondKey = computeArticleDedupKey(second);
+        const oldStyleKey = computeContentAwareArticleDedupKey(first);
+
+        if (firstKey && firstKey === secondKey && oldStyleKey && oldStyleKey !== firstKey) {
+            pass('Même titre fort détecté comme doublon malgré un snippet différent, avec compatibilité ancienne clé');
+            passed++;
+        } else {
+            fail('Même titre fort non détecté correctement comme doublon');
+            failed++;
+        }
     }
 
     // TEST 7 — Contrainte P2002 : tentative d'insertion avec link en double → doit lever une erreur gérée

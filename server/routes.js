@@ -12,6 +12,18 @@ const DEFAULT_PAGE_SIZE = 20;
 const MAX_FUTURE_SKEW_MS = 6 * 60 * 60 * 1000;
 const MAX_SOURCE_NAME_LENGTH = 120;
 const MAX_SOURCE_CATEGORY_LENGTH = 64;
+const RANKING_MINUTE_MS = 60 * 1000;
+const CATEGORY_RANK_BOOST_MINUTES = {
+    'Cybersecurité': 90,
+    'Intelligence Artificielle': 75,
+    'Cloud': 45,
+    'Développement': 45,
+    'Business': 20,
+    'Hardware': 20,
+    'Web': 15,
+    'Société': 10,
+    'Autre': -20
+};
 
 function parsePositiveInt(value, fallback) {
     const parsed = Number.parseInt(value, 10);
@@ -27,6 +39,43 @@ function normalizeInput(value, maxLength) {
         return '';
     }
     return value.trim().slice(0, maxLength);
+}
+
+function resolveArticleCategory(article) {
+    return article?.category || article?.source?.category || 'Autre';
+}
+
+function getArticleRankScore(article) {
+    const dateMs = new Date(article?.date || 0).getTime();
+    let score = Number.isFinite(dateMs) ? dateMs : 0;
+    const category = resolveArticleCategory(article);
+
+    score += (CATEGORY_RANK_BOOST_MINUTES[category] || 0) * RANKING_MINUTE_MS;
+
+    if (article?.isBookmarked) {
+        score += 6 * 60 * RANKING_MINUTE_MS;
+    }
+    if (article?.image) {
+        score += 20 * RANKING_MINUTE_MS;
+    }
+    if (article?.summary) {
+        score += 10 * RANKING_MINUTE_MS;
+    }
+    if (!article?.content || article.content.trim().length < 120) {
+        score -= 20 * RANKING_MINUTE_MS;
+    }
+
+    return score;
+}
+
+function rankArticlesForDailyScan(articles) {
+    return [...articles].sort((a, b) => {
+        const scoreDelta = getArticleRankScore(b) - getArticleRankScore(a);
+        if (scoreDelta !== 0) {
+            return scoreDelta;
+        }
+        return (b.id || 0) - (a.id || 0);
+    });
 }
 
 async function validateSourcePayload(payload) {
@@ -88,7 +137,10 @@ router.get('/articles', async (req, res) => {
     const maxAllowedDate = new Date(Date.now() + MAX_FUTURE_SKEW_MS);
 
     const where = {};
-    const conditions = [{ date: { lte: maxAllowedDate } }];
+    const conditions = [
+        { date: { lte: maxAllowedDate } },
+        { OR: [{ category: null }, { category: { not: 'Spam' } }] }
+    ];
 
     // Filtre de recherche textuelle
     if (search) {
@@ -128,7 +180,10 @@ router.get('/articles', async (req, res) => {
     try {
         const articles = await prisma.article.findMany({
             where,
-            orderBy: { date: 'desc' },
+            orderBy: [
+                { date: 'desc' },
+                { id: 'desc' }
+            ],
             take: limit,
             skip: (page - 1) * limit,
             include: { source: true }
@@ -137,7 +192,7 @@ router.get('/articles', async (req, res) => {
         const total = await prisma.article.count({ where });
 
         res.json({
-            data: articles,
+            data: rankArticlesForDailyScan(articles),
             pagination: {
                 total,
                 page,
@@ -301,7 +356,10 @@ router.get('/articles/stats', async (req, res) => {
         // Get all articles with their categories
         const maxAllowedDate = new Date(Date.now() + MAX_FUTURE_SKEW_MS);
         const articles = await prisma.article.findMany({
-            where: { date: { lte: maxAllowedDate } },
+            where: {
+                date: { lte: maxAllowedDate },
+                OR: [{ category: null }, { category: { not: 'Spam' } }]
+            },
             select: {
                 category: true,
                 source: {

@@ -16,8 +16,78 @@ const VALID_CATEGORIES = [
     'Autre'
 ];
 
+const CATEGORY_ALIASES = new Map([
+    ['cybersecurity', 'Cybersecurité'],
+    ['cyber security', 'Cybersecurité'],
+    ['cybersecurite', 'Cybersecurité'],
+    ['sécurité', 'Cybersecurité'],
+    ['securite', 'Cybersecurité'],
+    ['security', 'Cybersecurité'],
+    ['ai', 'Intelligence Artificielle'],
+    ['ia', 'Intelligence Artificielle'],
+    ['artificial intelligence', 'Intelligence Artificielle'],
+    ['machine learning', 'Intelligence Artificielle'],
+    ['llm', 'Intelligence Artificielle'],
+    ['dev', 'Développement'],
+    ['developer', 'Développement'],
+    ['software', 'Développement'],
+    ['programmation', 'Développement'],
+    ['saas', 'Business'],
+    ['startup', 'Business'],
+    ['business', 'Business']
+]);
+
+const CATEGORY_KEYWORDS = [
+    {
+        category: 'Cybersecurité',
+        terms: ['cve', 'vulnerability', 'vulnerabilite', 'faille', 'ransomware', 'malware', 'phishing', 'zero day', 'zeroday', 'patch tuesday', 'exploit', 'breach', 'piratage', 'cyberattaque']
+    },
+    {
+        category: 'Intelligence Artificielle',
+        terms: ['openai', 'anthropic', 'mistral', 'llm', 'chatgpt', 'claude', 'gemini', 'machine learning', 'deep learning', 'model', 'modele', 'agents ia', 'intelligence artificielle', 'generative ai']
+    },
+    {
+        category: 'Cloud',
+        terms: ['aws', 'azure', 'gcp', 'kubernetes', 'docker', 'serverless', 'cloudflare', 'terraform', 'devops', 's3', 'cloud']
+    },
+    {
+        category: 'Développement',
+        terms: ['javascript', 'typescript', 'react', 'node.js', 'nodejs', 'python', 'rust', 'go ', 'golang', 'api', 'framework', 'github', 'gitlab', 'sdk', 'release', 'version']
+    },
+    {
+        category: 'Hardware',
+        terms: ['gpu', 'cpu', 'nvidia', 'amd', 'intel', 'arm', 'puce', 'processeur', 'raspberry', 'ssd', 'serveur']
+    },
+    {
+        category: 'Web',
+        terms: ['browser', 'navigateur', 'chrome', 'firefox', 'safari', 'web', 'css', 'html', 'seo', 'frontend']
+    },
+    {
+        category: 'Business',
+        terms: ['startup', 'levee de fonds', 'acquisition', 'ipo', 'licenciement', 'revenu', 'croissance', 'marche', 'microsoft', 'google', 'apple']
+    },
+    {
+        category: 'Société',
+        terms: ['regulation', 'régulation', 'loi', 'privacy', 'vie privee', 'rgpd', 'copyright', 'justice', 'education', 'societe']
+    }
+];
+
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeForMatching(value) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    return value
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9+#.\s-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 function normalizeCategory(value) {
@@ -37,11 +107,44 @@ function normalizeCategory(value) {
     );
     if (exactMatch) return exactMatch;
 
+    const alias = CATEGORY_ALIASES.get(normalizeForMatching(trimmed));
+    if (alias) return alias;
+
     const matchedCategory = VALID_CATEGORIES.find((category) =>
         new RegExp(`\\b${escapeRegExp(category)}\\b`, 'i').test(trimmed)
     );
 
     return matchedCategory || null;
+}
+
+function categorizeArticleLocally(title, content) {
+    const normalizedPayload = normalizeForMatching(`${title || ''} ${content || ''}`.slice(0, 2500));
+    if (!normalizedPayload) {
+        return 'Autre';
+    }
+
+    let bestCategory = 'Autre';
+    let bestScore = 0;
+
+    for (const candidate of CATEGORY_KEYWORDS) {
+        let score = 0;
+        for (const term of candidate.terms) {
+            const normalizedTerm = normalizeForMatching(term);
+            if (!normalizedTerm) continue;
+
+            const pattern = new RegExp(`(^|\\s)${escapeRegExp(normalizedTerm)}($|\\s)`, 'i');
+            if (pattern.test(normalizedPayload)) {
+                score++;
+            }
+        }
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestCategory = candidate.category;
+        }
+    }
+
+    return bestScore > 0 ? bestCategory : 'Autre';
 }
 
 async function summarizeArticle(content) {
@@ -129,11 +232,12 @@ async function categorizeArticle(title, content) {
         const normalizedCategory = normalizeCategory(rawCategory);
         if (!normalizedCategory) {
             console.warn(`Categorization returned an invalid label: "${rawCategory}"`);
+            return categorizeArticleLocally(title, content);
         }
         return normalizedCategory;
     } catch (error) {
         console.error('Categorization Error:', error.message, error.failures || '');
-        return null;
+        return categorizeArticleLocally(title, content);
     }
 }
 
@@ -168,4 +272,4 @@ IMPORTANT: Ne base ton résumé QUE sur les titres fournis. N'invente rien.`,
     }
 }
 
-module.exports = { summarizeArticle, translateText, categorizeArticle, generateCategoryBrief };
+module.exports = { summarizeArticle, translateText, categorizeArticle, generateCategoryBrief, normalizeCategory, categorizeArticleLocally };

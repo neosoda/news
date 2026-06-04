@@ -2,8 +2,11 @@ const crypto = require('crypto');
 
 const TITLE_STOPWORDS = new Set([
     'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'is', 'it', 'of', 'on', 'or', 'that', 'the', 'to', 'with',
-    'au', 'aux', 'avec', 'ce', 'ces', 'dans', 'de', 'des', 'du', 'en', 'et', 'est', 'la', 'le', 'les', 'leur', 'leurs', 'mais', 'ou', 'par', 'pas', 'pour', 'que', 'qui', 'se', 'sur', 'un', 'une'
+    'au', 'aux', 'avec', 'ce', 'ces', 'dans', 'de', 'des', 'du', 'en', 'et', 'est', 'la', 'le', 'les', 'leur', 'leurs', 'mais', 'ou', 'par', 'pas', 'pour', 'que', 'qui', 'se', 'sur', 'un', 'une',
+    'voici', 'comment', 'pourquoi', 'nouveau', 'nouvelle', 'nouvelles', 'mise', 'jour'
 ]);
+
+const MIN_STRONG_TITLE_TOKENS = 5;
 
 function normalizeWhitespace(value) {
     if (typeof value !== 'string') {
@@ -46,6 +49,10 @@ function buildTitleSignature(title) {
 
     const uniqueSortedTokens = [...new Set(tokens)].sort();
     return uniqueSortedTokens.slice(0, 14).join(' ');
+}
+
+function hasStrongTitleSignature(title) {
+    return tokenizeForTitle(title).length >= MIN_STRONG_TITLE_TOKENS;
 }
 
 function tokenizeContent(value) {
@@ -104,7 +111,7 @@ function computeLegacyArticleDedupKey({ title, contentSnippet, content }) {
     return hashString(source);
 }
 
-function computeArticleDedupKey({ title, contentSnippet, content }) {
+function computeContentAwareArticleDedupKey({ title, contentSnippet, content }) {
     const titleSignature = buildTitleSignature(title);
 
     if (!titleSignature) {
@@ -119,10 +126,25 @@ function computeArticleDedupKey({ title, contentSnippet, content }) {
     return hashString(source);
 }
 
+function computeArticleDedupKey({ title, contentSnippet, content }) {
+    const titleSignature = buildTitleSignature(title);
+
+    if (!titleSignature) {
+        return null;
+    }
+
+    if (hasStrongTitleSignature(title)) {
+        return hashString(`title:${titleSignature}`);
+    }
+
+    return computeContentAwareArticleDedupKey({ title, contentSnippet, content });
+}
+
 module.exports = {
     normalizeWhitespace,
     normalizeText,
     computeArticleFingerprint,
     computeArticleDedupKey,
+    computeContentAwareArticleDedupKey,
     computeLegacyArticleDedupKey
 };
