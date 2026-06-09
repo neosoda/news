@@ -71,14 +71,14 @@ export default function Videos({ search }) {
                         <Youtube size={14} />
                         <span>Veille vidéo</span>
                     </div>
-                    <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tighter">
+                    <h1 className="text-4xl sm:text-5xl font-black text-primary tracking-tighter">
                         Vidéos <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500 truncate inline-block">IA & Tech</span>
                     </h1>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-2 flex items-center space-x-3">
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Résultats</span>
-                    <span className="text-xl font-black text-white">{data?.meta?.total || 0}</span>
+                <div className="surface-muted border theme-border rounded-2xl px-4 py-2 flex items-center space-x-3">
+                    <span className="text-xs font-bold text-secondary uppercase tracking-widest">Résultats</span>
+                    <span className="text-xl font-black text-primary">{data?.meta?.total || 0}</span>
                 </div>
             </div>
 
@@ -90,8 +90,8 @@ export default function Videos({ search }) {
                             key={topic.value}
                             onClick={() => toggleTopic(topic.value)}
                             className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 ${isActive
-                                    ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white shadow-lg shadow-red-900/30'
-                                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                                    ? 'bg-gradient-to-r from-red-600 to-orange-600 text-primary shadow-lg shadow-red-900/30'
+                                    : 'surface-muted text-secondary hover:bg-cyan-400/[0.10] hover:text-primary border theme-border'
                                 }`}
                         >
                             {topic.label}
@@ -103,7 +103,7 @@ export default function Videos({ search }) {
             {isLoading ? (
                 <div className="flex flex-col items-center justify-center min-h-[320px] space-y-4">
                     <Loader2 className="animate-spin text-red-500" size={48} />
-                    <p className="text-gray-400 font-medium animate-pulse">Chargement des vidéos...</p>
+                    <p className="text-secondary font-medium animate-pulse">Chargement des vidéos...</p>
                 </div>
             ) : isError ? (
                 <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-3xl text-red-400 font-bold flex items-center justify-center space-x-2">
@@ -111,7 +111,7 @@ export default function Videos({ search }) {
                     <span>Impossible de charger les vidéos pour le moment.</span>
                 </div>
             ) : (data?.data?.length || 0) === 0 ? (
-                <div className="flex flex-col items-center justify-center min-h-[320px] text-gray-500 space-y-3">
+                <div className="flex flex-col items-center justify-center min-h-[320px] text-muted space-y-3">
                     <PlayCircle size={48} className="opacity-25" />
                     <p>Aucune vidéo trouvée avec ces filtres.</p>
                 </div>
@@ -122,23 +122,23 @@ export default function Videos({ search }) {
                             key={video.id}
                             type="button"
                             onClick={() => openPlayer(video)}
-                            className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 hover:border-red-500/30 transition-all"
+                            className="group surface-muted border theme-border rounded-2xl overflow-hidden hover:bg-cyan-400/[0.10] hover:border-red-500/30 transition-all"
                         >
-                            <div className="aspect-video bg-gray-900 relative">
+                            <div className="aspect-video surface-card relative">
                                 {video.thumbnail ? (
                                     <img src={video.thumbnail} alt={video.title} className="h-full w-full object-cover" loading="lazy" />
                                 ) : (
-                                    <div className="h-full w-full flex items-center justify-center text-gray-500">
+                                    <div className="h-full w-full flex items-center justify-center text-muted">
                                         <PlayCircle size={32} />
                                     </div>
                                 )}
                                 <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors" />
                             </div>
                             <div className="p-4 space-y-2">
-                                <h3 className="text-white font-semibold line-clamp-2 min-h-[3rem]">{video.title}</h3>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider">{video.channel}</p>
+                                <h3 className="text-primary font-semibold line-clamp-2 min-h-[3rem]">{video.title}</h3>
+                                <p className="text-xs text-muted uppercase tracking-wider">{video.channel}</p>
                                 {video.description && (
-                                    <p className="text-sm text-gray-400 line-clamp-2">{video.description}</p>
+                                    <p className="text-sm text-secondary line-clamp-2">{video.description}</p>
                                 )}
                             </div>
                         </button>
@@ -155,17 +155,17 @@ export default function Videos({ search }) {
                     onClick={closePlayer}
                 >
                     <div
-                        className="mx-auto mt-8 max-w-5xl bg-gray-950 border border-white/10 rounded-2xl overflow-hidden"
+                        className="mx-auto mt-8 max-w-5xl bg-[var(--color-surface-raised)] border theme-border rounded-2xl overflow-hidden"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-                            <h3 className="text-white font-semibold line-clamp-1">{activeVideo.title}</h3>
+                        <div className="flex items-center justify-between px-4 py-3 border-b theme-border">
+                            <h3 className="text-primary font-semibold line-clamp-1">{activeVideo.title}</h3>
                             <div className="flex items-center gap-2">
                                 <a
                                     href={activeVideo.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-xs text-gray-300 hover:text-white px-2 py-1 rounded-lg border border-white/10 hover:border-white/30"
+                                    className="inline-flex items-center gap-1 text-xs text-secondary hover:text-primary px-2 py-1 rounded-lg border theme-border hover:border-cyan-300/30"
                                 >
                                     <ExternalLink size={14} />
                                     YouTube
@@ -173,7 +173,7 @@ export default function Videos({ search }) {
                                 <button
                                     type="button"
                                     onClick={closePlayer}
-                                    className="text-gray-300 hover:text-white p-1 rounded-lg border border-white/10 hover:border-white/30"
+                                    className="text-secondary hover:text-primary p-1 rounded-lg border theme-border hover:border-cyan-300/30"
                                     aria-label="Fermer le lecteur"
                                 >
                                     <X size={16} />

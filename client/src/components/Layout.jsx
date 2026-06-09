@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle } from 'lucide-react';
+import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, Sun, Moon } from 'lucide-react';
 import clsx from 'clsx';
 
 function NavItem({ to, icon, children, onClick }) {
@@ -14,17 +14,17 @@ function NavItem({ to, icon, children, onClick }) {
             className={clsx(
                 "flex items-center space-x-3 px-4 py-3 rounded-lg border transition-all duration-300",
                 isActive
-                    ? "bg-cyan-400/10 text-white border-cyan-300/25 shadow-[inset_3px_0_0_rgba(34,211,238,0.9)]"
-                    : "text-slate-400 border-transparent hover:bg-white/[0.045] hover:text-white hover:border-slate-500/15"
+                    ? "bg-cyan-400/10 text-primary border-cyan-300/25 shadow-[inset_3px_0_0_rgba(34,211,238,0.9)]"
+                    : "text-muted border-transparent hover:bg-cyan-400/[0.08] hover:text-primary hover:border-cyan-300/15"
             )}
         >
-            <IconComponent size={19} className={clsx(isActive ? "text-cyan-200" : "text-slate-500")} />
+            <IconComponent size={19} className={clsx(isActive ? "text-accent" : "text-muted")} />
             <span className="text-sm font-semibold tracking-wide">{children}</span>
         </Link>
     );
 }
 
-export default function Layout({ children, onSearch }) {
+export default function Layout({ children, onSearch, theme, onToggleTheme }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const location = useLocation();
 
@@ -43,10 +43,10 @@ export default function Layout({ children, onSearch }) {
     };
 
     return (
-        <div className="flex h-screen bg-[#080b10] text-slate-100 font-sans overflow-hidden">
+        <div className="app-shell flex h-screen font-sans overflow-hidden">
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-black/[0.65] backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+                    className="theme-overlay fixed inset-0 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
                     onClick={closeSidebar}
                 />
             )}
@@ -55,17 +55,17 @@ export default function Layout({ children, onSearch }) {
                 "fixed inset-y-0 left-0 z-50 w-72 glass-sidebar flex-shrink-0 flex flex-col transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static",
                 isSidebarOpen ? "translate-x-0" : "-translate-x-full"
             )}>
-                <div className="p-7 flex items-center justify-between border-b border-slate-500/15">
+                <div className="p-7 flex items-center justify-between border-b theme-divider">
                     <div className="flex items-center space-x-3">
                         <div className="bg-cyan-400/10 border border-cyan-300/25 p-2 rounded-lg shadow-lg shadow-cyan-950/30">
                             <Newspaper className="text-cyan-200" size={24} />
                         </div>
                         <div>
-                            <span className="block text-2xl font-black tracking-tighter text-white leading-none">NewsAI</span>
-                            <span className="block text-[10px] uppercase tracking-[0.28em] text-slate-500 mt-1">Veille techno</span>
+                            <span className="block text-2xl font-black tracking-tighter text-primary leading-none">NewsAI</span>
+                            <span className="block text-[10px] uppercase tracking-[0.28em] text-muted mt-1">Veille techno</span>
                         </div>
                     </div>
-                    <button onClick={closeSidebar} className="lg:hidden text-slate-400 hover:text-white">
+                    <button onClick={closeSidebar} className="lg:hidden text-muted hover:text-primary">
                         <X size={24} />
                     </button>
                 </div>
@@ -78,12 +78,12 @@ export default function Layout({ children, onSearch }) {
                     <NavItem to="/sources" icon={Rss} onClick={closeSidebar}>Sources</NavItem>
                 </nav>
 
-                <div className="p-5 border-t border-slate-500/15">
+                <div className="p-5 border-t theme-divider">
                     <div className="news-panel rounded-xl p-4">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.22em] mb-2">Status</p>
+                        <p className="text-[10px] text-muted font-bold uppercase tracking-[0.22em] mb-2">Status</p>
                         <div className="flex items-center space-x-2">
                             <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
-                            <span className="text-sm font-semibold text-slate-300">Système opérationnel</span>
+                            <span className="text-sm font-semibold text-secondary">Système opérationnel</span>
                         </div>
                     </div>
                 </div>
@@ -94,11 +94,11 @@ export default function Layout({ children, onSearch }) {
                     <div className="flex items-center space-x-4">
                         <button
                             onClick={toggleSidebar}
-                            className="p-2 -ml-2 text-slate-400 hover:text-white lg:hidden transition-colors"
+                            className="p-2 -ml-2 text-muted hover:text-primary lg:hidden transition-colors"
                         >
                             <Menu size={24} />
                         </button>
-                        <h2 className="text-lg font-black text-white hidden sm:block whitespace-nowrap tracking-tight">
+                        <h2 className="text-lg font-black text-primary hidden sm:block whitespace-nowrap tracking-tight">
                             {getPageTitle()}
                         </h2>
                     </div>
@@ -110,13 +110,28 @@ export default function Layout({ children, onSearch }) {
                         <input
                             type="text"
                             onChange={(e) => onSearch && onSearch(e.target.value)}
-                            className="block w-full pl-12 pr-4 py-2.5 bg-slate-950/40 border border-slate-500/15 rounded-xl leading-5 text-slate-100 placeholder-slate-500 focus:outline-none focus:bg-slate-900/70 focus:ring-2 focus:ring-cyan-400/25 focus:border-cyan-300/40 transition-all duration-300 text-sm sm:text-base shadow-inner"
+                            className="theme-input block w-full pl-12 pr-4 py-2.5 rounded-xl leading-5 transition-all duration-300 text-sm sm:text-base"
                             placeholder="Rechercher des actualités..."
                         />
                     </div>
 
-                    <div className="hidden md:flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-xl bg-cyan-400/10 border border-cyan-300/25 flex items-center justify-center text-cyan-100 font-black shadow-lg shadow-cyan-950/20">
+                    <div className="flex items-center space-x-3">
+                        <button
+                            type="button"
+                            onClick={onToggleTheme}
+                            className="theme-toggle"
+                            aria-label={theme === 'dark' ? 'Activer le mode clair' : 'Activer le mode sombre'}
+                            aria-pressed={theme === 'dark'}
+                            title={theme === 'dark' ? 'Passer au mode clair' : 'Passer au mode sombre'}
+                        >
+                            <span className="sr-only">Changer de thème</span>
+                            <Sun size={16} className="absolute left-3 text-amber-400" aria-hidden="true" />
+                            <Moon size={16} className="absolute right-3 text-cyan-300" aria-hidden="true" />
+                            <span className="theme-toggle-thumb">
+                                {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+                            </span>
+                        </button>
+                        <div className="hidden md:flex w-10 h-10 rounded-xl bg-cyan-400/10 border border-cyan-300/25 items-center justify-center text-accent font-black shadow-lg shadow-cyan-950/20">
                             N
                         </div>
                     </div>
