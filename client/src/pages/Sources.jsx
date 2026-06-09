@@ -106,11 +106,11 @@ export default function Sources() {
     return (
         <div className="max-w-7xl mx-auto">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
-                <h1 className="text-3xl font-bold text-white">Source Reliability Control</h1>
+                <h1 className="text-3xl font-bold text-primary">Source Reliability Control</h1>
                 <button
                     onClick={handleRefresh}
                     disabled={isRefreshing}
-                    className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+                    className="flex items-center justify-center space-x-2 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
                 >
                     <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
                     <span>{isRefreshing ? 'Refreshing...' : 'Refresh All'}</span>
@@ -119,50 +119,50 @@ export default function Sources() {
 
             {summary && (
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-                    <div className="bg-gray-800/70 border border-gray-700 rounded-xl p-4">
-                        <p className="text-xs uppercase tracking-wider text-gray-400">Total</p>
-                        <p className="text-2xl font-black text-white mt-1">{summary.total}</p>
+                    <div className="surface-card border theme-border rounded-xl p-4">
+                        <p className="text-xs uppercase tracking-wider text-secondary">Total</p>
+                        <p className="text-2xl font-black text-primary mt-1">{summary.total}</p>
                     </div>
-                    <div className="bg-gray-800/70 border border-gray-700 rounded-xl p-4">
-                        <p className="text-xs uppercase tracking-wider text-gray-400">Active</p>
+                    <div className="surface-card border theme-border rounded-xl p-4">
+                        <p className="text-xs uppercase tracking-wider text-secondary">Active</p>
                         <p className="text-2xl font-black text-emerald-300 mt-1">{summary.active}</p>
                     </div>
-                    <div className="bg-gray-800/70 border border-gray-700 rounded-xl p-4">
-                        <p className="text-xs uppercase tracking-wider text-gray-400">Cooldown</p>
+                    <div className="surface-card border theme-border rounded-xl p-4">
+                        <p className="text-xs uppercase tracking-wider text-secondary">Cooldown</p>
                         <p className="text-2xl font-black text-amber-300 mt-1">{summary.coolingDown}</p>
                     </div>
-                    <div className="bg-gray-800/70 border border-gray-700 rounded-xl p-4">
-                        <p className="text-xs uppercase tracking-wider text-gray-400">Disabled</p>
+                    <div className="surface-card border theme-border rounded-xl p-4">
+                        <p className="text-xs uppercase tracking-wider text-secondary">Disabled</p>
                         <p className="text-2xl font-black text-red-300 mt-1">{summary.disabled}</p>
                     </div>
-                    <div className="bg-gray-800/70 border border-gray-700 rounded-xl p-4">
-                        <p className="text-xs uppercase tracking-wider text-gray-400">Failing</p>
+                    <div className="surface-card border theme-border rounded-xl p-4">
+                        <p className="text-xs uppercase tracking-wider text-secondary">Failing</p>
                         <p className="text-2xl font-black text-orange-300 mt-1">{summary.failing}</p>
                     </div>
                 </div>
             )}
 
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 mb-8">
-                <h2 className="text-xl font-semibold text-white mb-4">Add RSS Feed</h2>
+            <div className="surface-card p-6 rounded-xl border theme-border mb-8">
+                <h2 className="text-xl font-semibold text-primary mb-4">Add RSS Feed</h2>
                 <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                     <input
                         type="text"
                         placeholder="Source name"
                         value={newSource.name}
                         onChange={(event) => setNewSource({ ...newSource, name: event.target.value })}
-                        className="lg:col-span-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="theme-input lg:col-span-1 rounded-lg px-4 py-2"
                     />
                     <input
                         type="url"
                         placeholder="https://example.com/feed.xml"
                         value={newSource.url}
                         onChange={(event) => setNewSource({ ...newSource, url: event.target.value })}
-                        className="lg:col-span-2 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="theme-input lg:col-span-2 rounded-lg px-4 py-2"
                     />
                     <select
                         value={newSource.category}
                         onChange={(event) => setNewSource({ ...newSource, category: event.target.value })}
-                        className="lg:col-span-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="theme-input lg:col-span-1 rounded-lg px-4 py-2"
                     >
                         <option>Tech</option>
                         <option>Science</option>
@@ -184,20 +184,20 @@ export default function Sources() {
                 )}
             </div>
 
-            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="surface-card rounded-xl border theme-border overflow-hidden">
                 {isLoading ? (
-                    <div className="p-12 text-center text-gray-400">Loading source health...</div>
+                    <div className="p-12 text-center text-secondary">Loading source health...</div>
                 ) : isError ? (
                     <div className="p-6 text-red-300 flex items-center gap-2">
                         <AlertCircle size={18} />
                         <span>{error?.response?.data?.error || error?.message || 'Failed to load source health.'}</span>
                     </div>
                 ) : rows.length === 0 ? (
-                    <div className="p-12 text-center text-gray-400">No sources found.</div>
+                    <div className="p-12 text-center text-secondary">No sources found.</div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left min-w-[1100px]">
-                            <thead className="bg-gray-900/50 text-gray-400 uppercase text-xs font-semibold">
+                            <thead className="surface-muted text-secondary uppercase text-xs font-semibold">
                                 <tr>
                                     <th className="px-6 py-4">Name</th>
                                     <th className="px-6 py-4">Category</th>
@@ -209,31 +209,31 @@ export default function Sources() {
                                     <th className="px-6 py-4">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-700">
+                            <tbody className="divide-y divide-[var(--color-border)]">
                                 {rows.map((source) => {
                                     const status = getStatusBadge(source);
                                     const canReactivate = !source.isActive || source.isCoolingDown || source.consecutiveFailures > 0;
                                     const isReactivating = reactivateMutation.isPending && reactivateMutation.variables === source.id;
 
                                     return (
-                                        <tr key={source.id} className="hover:bg-gray-700/20 transition-colors align-top">
-                                            <td className="px-6 py-4 text-white font-medium">{source.name}</td>
-                                            <td className="px-6 py-4 text-gray-300">{source.category}</td>
+                                        <tr key={source.id} className="hover:bg-cyan-400/[0.08] transition-colors align-top">
+                                            <td className="px-6 py-4 text-primary font-medium">{source.name}</td>
+                                            <td className="px-6 py-4 text-secondary">{source.category}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex px-2 py-1 rounded text-xs border ${status.className}`}>
                                                     {status.label}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-gray-300">{source.consecutiveFailures}</td>
-                                            <td className="px-6 py-4 text-gray-300">{formatDateTime(source.cooldownUntil)}</td>
-                                            <td className="px-6 py-4 text-gray-300 max-w-xs break-words">{source.lastError || '-'}</td>
-                                            <td className="px-6 py-4 text-blue-300 max-w-xs break-all">{source.url}</td>
+                                            <td className="px-6 py-4 text-secondary">{source.consecutiveFailures}</td>
+                                            <td className="px-6 py-4 text-secondary">{formatDateTime(source.cooldownUntil)}</td>
+                                            <td className="px-6 py-4 text-secondary max-w-xs break-words">{source.lastError || '-'}</td>
+                                            <td className="px-6 py-4 text-accent max-w-xs break-all">{source.url}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         onClick={() => reactivateMutation.mutate(source.id)}
                                                         disabled={!canReactivate || isReactivating}
-                                                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-500/40 text-blue-300 hover:bg-blue-500/10 disabled:opacity-40"
+                                                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-cyan-400/40 text-accent hover:bg-cyan-400/10 disabled:opacity-40"
                                                     >
                                                         {isReactivating ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
                                                         Reactivate
