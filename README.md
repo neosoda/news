@@ -11,7 +11,7 @@ Une application web complète de veille technologique automatisée, conçue avec
 - **Fallback Robuste** : Si LibreTranslate est indisponible, la traduction bascule automatiquement sur le LLM en cascade (Groq → Mistral → OpenRouter).
 - **Zéro Doublon** : Déduplication robuste basée sur URL normalisée + empreinte de contenu (hash SHA-256).
 - **Interface Premium** : Dashboard réactif et moderne (React + Tailwind) avec horodatage détaillé.
-- **Déploiement Automatisé** : Initialisation complète de la base de données et des 71 sources tech/sécurité/IA au lancement, dont le blog Ollama (Compatible Coolify).
+- **Déploiement Automatisé** : Initialisation complète de la base de données et des 72 sources tech/sécurité/IA au lancement, dont le blog Ollama (Compatible Coolify).
 
 ## 🤖 Architecture IA : Cascade de Fallback
 

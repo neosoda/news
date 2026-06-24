@@ -57,6 +57,7 @@ async function main() {
         { name: 'Futura Tech', url: 'https://www.futura-sciences.com/rss/actualites/tech/', category: 'Tech News' },
         { name: 'Futura High-Tech', url: 'https://www.futura-sciences.com/rss/actualites/high-tech/', category: 'Tech News' },
         { name: 'L\'Usine Digitale', url: 'https://www.usine-digitale.fr/rss', category: 'Tech News' },
+        { name: 'SiteGeek', url: 'https://www.sitegeek.fr/feed/', category: 'Tech News' },
         // International Tech (New)
         { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index', category: 'Tech News' },
         { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', category: 'Tech News' },
