@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, ShieldAlert, Sun, Moon } from 'lucide-react';
 import clsx from 'clsx';
+import { useQuery } from '@tanstack/react-query';
+import { getHealth } from '../services/api';
 
 function NavItem({ to, icon, children, onClick }) {
     const location = useLocation();
@@ -24,9 +26,17 @@ function NavItem({ to, icon, children, onClick }) {
     );
 }
 
-export default function Layout({ children, onSearch, theme, onToggleTheme }) {
+export default function Layout({ children, onSearch, search, theme, onToggleTheme }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const location = useLocation();
+    const { data: health, isError: isHealthError } = useQuery({
+        queryKey: ['health'],
+        queryFn: getHealth,
+        refetchInterval: 60000,
+        retry: 1
+    });
+    const isOperational = Boolean(health?.status === 'ok' && !health?.rss?.lastError && !isHealthError);
+    const supportsSearch = ['/', '/videos', '/breaches'].includes(location.pathname);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
     const closeSidebar = () => setIsSidebarOpen(false);
@@ -66,7 +76,7 @@ export default function Layout({ children, onSearch, theme, onToggleTheme }) {
                             <span className="block text-[10px] uppercase tracking-[0.28em] text-muted mt-1">Veille techno</span>
                         </div>
                     </div>
-                    <button onClick={closeSidebar} className="lg:hidden text-muted hover:text-primary">
+                    <button onClick={closeSidebar} className="lg:hidden text-muted hover:text-primary" aria-label="Fermer le menu">
                         <X size={24} />
                     </button>
                 </div>
@@ -84,8 +94,8 @@ export default function Layout({ children, onSearch, theme, onToggleTheme }) {
                     <div className="news-panel rounded-xl p-4">
                         <p className="text-[10px] text-muted font-bold uppercase tracking-[0.22em] mb-2">Status</p>
                         <div className="flex items-center space-x-2">
-                            <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
-                            <span className="text-sm font-semibold text-secondary">Système opérationnel</span>
+                            <div className={clsx('w-2 h-2 rounded-full shadow-sm', isOperational ? 'bg-emerald-400 shadow-emerald-400/50' : 'bg-amber-400 shadow-amber-400/50')}></div>
+                            <span className="text-sm font-semibold text-secondary">{isOperational ? 'Système opérationnel' : 'Système indisponible'}</span>
                         </div>
                     </div>
                 </div>
@@ -97,6 +107,7 @@ export default function Layout({ children, onSearch, theme, onToggleTheme }) {
                         <button
                             onClick={toggleSidebar}
                             className="p-2 -ml-2 text-muted hover:text-primary lg:hidden transition-colors"
+                            aria-label="Ouvrir le menu"
                         >
                             <Menu size={24} />
                         </button>
@@ -105,17 +116,18 @@ export default function Layout({ children, onSearch, theme, onToggleTheme }) {
                         </h2>
                     </div>
 
-                    <div className="relative flex-1 max-w-xl mx-4">
+                    {supportsSearch && <div className="relative flex-1 max-w-xl mx-4">
                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                             <Search className="h-5 w-5 text-slate-500" />
                         </div>
                         <input
                             type="text"
+                            value={search}
                             onChange={(e) => onSearch && onSearch(e.target.value)}
                             className="theme-input block w-full pl-12 pr-4 py-2.5 rounded-xl leading-5 transition-all duration-300 text-sm sm:text-base"
                             placeholder="Rechercher des actualités..."
                         />
-                    </div>
+                    </div>}
 
                     <div className="flex items-center space-x-3">
                         <button

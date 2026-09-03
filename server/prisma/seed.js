@@ -93,19 +93,18 @@ async function main() {
         { name: 'dcod.ch', url: 'https://dcod.ch/feed/', category: 'Development' },
     ];
 
-    console.log('Cleaning up old data...');
-    await prisma.article.deleteMany();
-    await prisma.source.deleteMany();
-
-    console.log('Seeding sources...');
+    console.log('Ensuring default sources exist...');
 
     for (const source of sources) {
-        await prisma.source.create({
-            data: { name: source.name, url: source.url, category: source.category },
+        await prisma.source.upsert({
+            where: { url: source.url },
+            create: { name: source.name, url: source.url, category: source.category },
+            // Never overwrite an administrator’s source settings, and never erase articles at startup.
+            update: {},
         });
     }
 
-    console.log(`Seeding complete. ${sources.length} sources processed.`);
+    console.log(`Default source check complete. ${sources.length} sources processed.`);
 }
 
 main()

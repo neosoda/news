@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { updateAllFeeds, fetchAndProcessFeed } = require('./services/rss');
+const { fetchAndProcessFeed } = require('./services/rss');
 const { summarizeArticle } = require('./services/ai');
 const { fetchVideos, parseLimit, parseTopics } = require('./services/videos');
 const { validateOutboundHttpUrl } = require('./services/urlSafety');
 const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./services/feedUrlCatalog');
+const { requireAdmin, limitAdminMutation, limitSummarization } = require('./services/adminAuth');
+const { getFeedUpdateStatus, requestFeedRefresh } = require('./services/rss');
 const prisma = require('./db');
 
 const MAX_PAGE_SIZE = 100;
@@ -120,10 +122,10 @@ async function validateSourcePayload(payload) {
 router.get('/health', async (req, res) => {
     try {
         await prisma.$queryRaw`SELECT 1`;
-        res.json({ status: 'OK', database: 'connected' });
+        res.json({ status: 'ok', database: 'connected', rss: getFeedUpdateStatus() });
     } catch (error) {
         console.error('Health check failed:', error);
-        res.status(500).json({ status: 'ERROR', database: 'disconnected', error: error.message });
+        res.status(503).json({ status: 'error', database: 'disconnected', rss: getFeedUpdateStatus() });
     }
 });
 
@@ -205,6 +207,9 @@ router.get('/articles', async (req, res) => {
     }
 });
 
+// Source administration is intentionally protected as it exposes feed URLs and changes global data.
+router.use('/sources', requireAdmin);
+
 // GET /sources - List sources
 router.get('/sources', async (req, res) => {
     try {
@@ -270,7 +275,7 @@ router.get('/sources/health', async (req, res) => {
 });
 
 // POST /sources - Add source
-router.post('/sources', async (req, res) => {
+router.post('/sources', limitAdminMutation, async (req, res) => {
     const validation = await validateSourcePayload(req.body);
     if (!validation.ok) {
         return res.status(400).json({ error: validation.error });
@@ -299,7 +304,7 @@ router.post('/sources', async (req, res) => {
 });
 
 // POST /sources/:id/reactivate - reset failure state and reactivate source
-router.post('/sources/:id/reactivate', async (req, res) => {
+router.post('/sources/:id/reactivate', limitAdminMutation, async (req, res) => {
     const sourceId = parseEntityId(req.params.id);
     if (sourceId === null) {
         return res.status(400).json({ error: 'Invalid source id.' });
@@ -323,7 +328,7 @@ router.post('/sources/:id/reactivate', async (req, res) => {
 });
 
 // DELETE /sources/:id
-router.delete('/sources/:id', async (req, res) => {
+router.delete('/sources/:id', limitAdminMutation, async (req, res) => {
     const sourceId = parseEntityId(req.params.id);
     if (sourceId === null) {
         return res.status(400).json({ error: 'Invalid source id.' });
@@ -340,14 +345,13 @@ router.delete('/sources/:id', async (req, res) => {
     }
 });
 
-// GET /sources/refresh
-router.get('/sources/refresh', async (req, res) => {
-    try {
-        const count = await updateAllFeeds();
-        res.json({ message: `Refreshed all feeds. ${count} new articles.` });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+// POST /sources/refresh - Start an asynchronous refresh. GET must not mutate state.
+router.post('/sources/refresh', limitAdminMutation, (req, res) => {
+    const { alreadyRunning, status } = requestFeedRefresh();
+    res.status(202).json({
+        message: alreadyRunning ? 'Une synchronisation est déjà en cours.' : 'Synchronisation lancée.',
+        status
+    });
 });
 
 // GET /articles/stats - Get article count by category
@@ -388,7 +392,7 @@ router.get('/articles/stats', async (req, res) => {
 });
 
 // POST /articles/:id/summarize
-router.post('/articles/:id/summarize', async (req, res) => {
+router.post('/articles/:id/summarize', limitSummarization, async (req, res) => {
     const articleId = parseEntityId(req.params.id);
     if (articleId === null) {
         return res.status(400).json({ error: 'Invalid article id.' });
@@ -460,6 +464,18 @@ const { generateCategoryBrief } = require('./services/ai');
 // GET /daily-brief - Generate daily highlights
 router.get('/daily-brief', async (req, res) => {
     try {
+        const dateKey = new Date().toISOString().slice(0, 10);
+        const cachedBrief = await prisma.dailyBrief.findUnique({ where: { dateKey } });
+        const isFresh = cachedBrief && (Date.now() - cachedBrief.updatedAt.getTime()) < 60 * 60 * 1000;
+
+        if (isFresh) {
+            try {
+                return res.json(JSON.parse(cachedBrief.payload));
+            } catch (error) {
+                console.warn('Ignoring an invalid cached daily brief:', error.message);
+            }
+        }
+
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
 
@@ -516,6 +532,12 @@ router.get('/daily-brief', async (req, res) => {
                 topArticles: catArticles.slice(0, 5) // Send top 5 metadata/links for context
             });
         }
+
+        await prisma.dailyBrief.upsert({
+            where: { dateKey },
+            create: { dateKey, payload: JSON.stringify(briefs) },
+            update: { payload: JSON.stringify(briefs) }
+        });
 
         res.json(briefs);
 

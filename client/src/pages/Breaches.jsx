@@ -86,7 +86,7 @@ export default function Breaches({ search }) {
                     <div className="rounded-2xl border theme-border surface-card p-10 text-center">
                         <ShieldAlert size={34} className="mx-auto text-muted" aria-hidden="true" />
                         <h2 className="mt-4 text-lg font-black text-primary">Aucune alerte ne correspond à cette recherche</h2>
-                        <p className="mt-2 text-sm text-secondary">Les flux sont synchronisés automatiquement toutes les 30 minutes.</p>
+                        <p className="mt-2 text-sm text-secondary">Les flux sont synchronisés automatiquement toutes les 15 minutes.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ExternalLink, Bot, Sparkles, Bookmark } from 'lucide-react';
 import { summarizeArticle, toggleBookmark } from '../services/api';
+import { useQueryClient } from '@tanstack/react-query';
 
 const CATEGORY_COLORS = {
     'Cybersecurité': 'bg-red-500/[0.15] text-red-300 border-red-400/25',
@@ -66,6 +67,7 @@ function normalizeCategory(category) {
 }
 
 export default function ArticleCard({ article }) {
+    const queryClient = useQueryClient();
     const [summary, setSummary] = useState(article.summary);
     const [isBookmarked, setIsBookmarked] = useState(article.isBookmarked);
     const [loading, setLoading] = useState(false);
@@ -75,6 +77,7 @@ export default function ArticleCard({ article }) {
         try {
             const data = await summarizeArticle(article.id);
             setSummary(data.summary);
+            queryClient.invalidateQueries({ queryKey: ['articles'] });
         } catch (e) {
             console.error(e);
         } finally {
@@ -87,6 +90,8 @@ export default function ArticleCard({ article }) {
         setIsBookmarked(newState);
         try {
             await toggleBookmark(article.id);
+            queryClient.invalidateQueries({ queryKey: ['articles'] });
+            queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
         } catch (e) {
             console.error(e);
             setIsBookmarked(!newState);
@@ -129,6 +134,7 @@ export default function ArticleCard({ article }) {
 
             <button
                 onClick={handleBookmark}
+                aria-label={isBookmarked ? 'Retirer des favoris' : 'Ajouter aux favoris'}
                 className="absolute top-3 right-3 z-10 p-2 rounded-full bg-[var(--color-surface-raised)]/90 hover:bg-cyan-400/15 backdrop-blur-md text-primary border theme-border transition-colors"
                 title={isBookmarked ? "Retirer des favoris" : "Ajouter aux favoris"}
             >

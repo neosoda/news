@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getDailyBrief } from '../services/api';
-import { Loader2, Calendar, Newspaper, ArrowRight, Share2, AlertCircle } from 'lucide-react';
+import { Loader2, Calendar, Newspaper, ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -12,7 +12,7 @@ export default function DailyBrief() {
     // Capitalize first letter of date
     const formattedDate = today.charAt(0).toUpperCase() + today.slice(1);
 
-    const { data: briefs, isLoading, isError } = useQuery({
+    const { data: briefs, isLoading, isError, refetch, isFetching } = useQuery({
         queryKey: ['daily-brief'],
         queryFn: getDailyBrief,
         staleTime: 1000 * 60 * 60, // Cache for 1 hour
@@ -52,6 +52,9 @@ export default function DailyBrief() {
                     <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
                     <h3 className="text-xl font-bold text-primary mb-2">Erreur de génération</h3>
                     <p className="text-red-300">Impossible de créer le brief pour le moment. Veuillez réessayer plus tard.</p>
+                    <button type="button" onClick={() => refetch()} disabled={isFetching} className="mt-5 inline-flex items-center gap-2 rounded-xl border border-red-400/30 px-4 py-2 text-sm font-bold text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-60">
+                        <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} aria-hidden="true" /> Réessayer
+                    </button>
                 </div>
             ) : (!briefs || briefs.length === 0) ? (
                 <div className="text-center text-secondary py-20">

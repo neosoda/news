@@ -4,6 +4,37 @@ const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
+const ADMIN_TOKEN_STORAGE_KEY = 'newsai-admin-token';
+
+function getSessionStorage() {
+    return typeof window === 'undefined' ? null : window.sessionStorage;
+}
+
+function applyAdminToken(token) {
+    if (token) {
+        api.defaults.headers.common['X-Admin-Token'] = token;
+    } else {
+        delete api.defaults.headers.common['X-Admin-Token'];
+    }
+}
+
+applyAdminToken(getSessionStorage()?.getItem(ADMIN_TOKEN_STORAGE_KEY) || '');
+
+export const hasAdminToken = () => Boolean(getSessionStorage()?.getItem(ADMIN_TOKEN_STORAGE_KEY));
+
+export const setAdminToken = (token) => {
+    const normalized = typeof token === 'string' ? token.trim() : '';
+    if (!normalized) return false;
+    getSessionStorage()?.setItem(ADMIN_TOKEN_STORAGE_KEY, normalized);
+    applyAdminToken(normalized);
+    return true;
+};
+
+export const clearAdminToken = () => {
+    getSessionStorage()?.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    applyAdminToken('');
+};
+
 export const getArticles = async (page = 1, search = '', category = '') => {
     const { data } = await api.get('/articles', { params: { page, search, category } });
     return data;
@@ -35,7 +66,7 @@ export const deleteSource = async (id) => {
 };
 
 export const refreshSources = async () => {
-    const { data } = await api.get('/sources/refresh');
+    const { data } = await api.post('/sources/refresh');
     return data;
 };
 
@@ -61,6 +92,11 @@ export const getDailyBrief = async () => {
 
 export const getArticleStats = async () => {
     const { data } = await api.get('/articles/stats');
+    return data;
+};
+
+export const getHealth = async () => {
+    const { data } = await api.get('/health');
     return data;
 };
 

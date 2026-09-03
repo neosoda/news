@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useDeferredValue, useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -21,7 +21,8 @@ function getInitialTheme() {
 }
 
 function App() {
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDeferredValue(searchInput);
   const [category, setCategory] = useState('');
   const [theme, setTheme] = useState(getInitialTheme);
 
@@ -35,7 +36,7 @@ function App() {
   };
 
   return (
-    <Layout onSearch={setSearch} theme={theme} onToggleTheme={toggleTheme}>
+    <Layout search={searchInput} onSearch={setSearchInput} theme={theme} onToggleTheme={toggleTheme}>
       <Routes>
         <Route path="/" element={<Dashboard search={search} category={category} setCategory={setCategory} />} />
         <Route path="/daily-brief" element={<DailyBrief />} />

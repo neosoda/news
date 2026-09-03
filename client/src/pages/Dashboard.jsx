@@ -94,6 +94,7 @@ export default function Dashboard({ search, category, setCategory }) {
                 <div className="flex flex-wrap gap-2.5">
                     <button
                         onClick={() => setCategory('')}
+                        aria-pressed={category === ''}
                         className={`px-3.5 py-2 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center space-x-2 border ${category === ''
                                 ? 'bg-cyan-400/[0.12] text-cyan-100 border-cyan-300/30 shadow-lg shadow-cyan-500/10'
                                 : 'news-chip'
@@ -112,6 +113,7 @@ export default function Dashboard({ search, category, setCategory }) {
                         <button
                             key={cat}
                             onClick={() => setCategory(cat)}
+                            aria-pressed={category === cat}
                             className={`px-3.5 py-2 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center space-x-2 border ${category === cat
                                     ? 'bg-cyan-400/[0.12] text-cyan-100 border-cyan-300/30 shadow-lg shadow-cyan-500/10'
                                     : 'news-chip'
@@ -136,7 +138,7 @@ export default function Dashboard({ search, category, setCategory }) {
                 </div>
             ) : status === 'error' ? (
                 <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-xl text-red-300 font-bold flex items-center justify-center">
-                    Une erreur est survenue lors de la recuperation des articles.
+                    Les actualités sont momentanément indisponibles. Vérifiez la santé du serveur puis réessayez.
                 </div>
             ) : (
                 <>

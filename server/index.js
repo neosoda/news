@@ -7,8 +7,29 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
+const { createCorsOptions } = require('./services/adminAuth');
+
+app.disable('x-powered-by');
+app.use(cors(createCorsOptions()));
+app.use(express.json({ limit: '100kb' }));
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Content-Security-Policy', [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' https: data:",
+        "connect-src 'self'",
+        "frame-src https://www.youtube-nocookie.com"
+    ].join('; '));
+    next();
+});
 
 const apiRoutes = require('./routes');
 const cron = require('node-cron');
@@ -43,8 +64,8 @@ async function runFeedRefresh(trigger) {
     }
 }
 
-// Schedule RSS update every 30 minutes
-cron.schedule('*/30 * * * *', () => {
+// Schedule RSS update every 15 minutes
+cron.schedule('*/15 * * * *', () => {
     console.log('Running scheduled RSS update...');
     runFeedRefresh('cron');
 });

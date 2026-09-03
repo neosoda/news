@@ -49,6 +49,25 @@
     --hero-amber: rgba(245, 158, 11, 0.16);
   }
 
+  :root[data-theme='light'] .text-cyan-100,
+  :root[data-theme='light'] .text-cyan-200,
+  :root[data-theme='light'] .text-cyan-300 {
+    color: #075985;
+  }
+
+  :root[data-theme='light'] .text-emerald-300 {
+    color: #047857;
+  }
+
+  :root[data-theme='light'] .text-amber-300,
+  :root[data-theme='light'] .text-orange-300 {
+    color: #9a3412;
+  }
+
+  :root[data-theme='light'] .text-red-300 {
+    color: #b91c1c;
+  }
+
   html {
     min-height: 100%;
     background: var(--color-bg);

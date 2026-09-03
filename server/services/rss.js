@@ -16,11 +16,11 @@ const {
     computeContentAwareArticleDedupKey,
     computeLegacyArticleDedupKey
 } = require('./articleDedup');
-const { validateOutboundHttpUrl } = require('./urlSafety');
+const { validateOutboundHttpUrl, createPinnedLookup } = require('./urlSafety');
 const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./feedUrlCatalog');
 
 const FEED_TIMEOUT_MS = 10000;
-const FEED_MAX_REDIRECTS = 5;
+const MAX_SAFE_REDIRECTS = 5;
 const MAX_FUTURE_SKEW_MS = 6 * 60 * 60 * 1000;
 const IMAGE_RECOVERY_TIMEOUT_MS = 5000;
 const IMAGE_RECOVERY_MAX_BYTES = 1024 * 1024;
@@ -30,6 +30,13 @@ const FEED_XML_CHARSET_SCAN_BYTES = 2048;
 const ENCODING_ARTIFACT_PATTERN = /[\uFFFD\u00C3\u00C2]|\u00E2\u20AC/u;
 
 let activeUpdatePromise = null;
+const feedUpdateStatus = {
+    isRunning: false,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    lastError: null,
+    lastNewArticles: 0
+};
 
 function readPositiveIntFromEnv(name, fallback) {
     const rawValue = process.env[name];
@@ -39,6 +46,7 @@ function readPositiveIntFromEnv(name, fallback) {
 
 const SOURCE_FAILURE_COOLDOWN_MINUTES = readPositiveIntFromEnv('SOURCE_FAILURE_COOLDOWN_MINUTES', 60);
 const SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES = readPositiveIntFromEnv('SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES', 12);
+const FEED_CONCURRENCY = Math.min(readPositiveIntFromEnv('FEED_CONCURRENCY', 4), 10);
 
 function normalizeErrorMessage(errorMessage) {
     if (typeof errorMessage !== 'string' || !errorMessage.trim()) {
@@ -533,10 +541,6 @@ async function collapseDuplicateArticlesBySourceNumericId() {
     }
 }
 
-function getResponseUrl(response, fallbackUrl) {
-    return response?.request?.res?.responseUrl || fallbackUrl;
-}
-
 function getItemDate(item) {
     if (!item?.pubDate) {
         return null;
@@ -785,41 +789,92 @@ async function clampFutureArticleDates() {
 
 async function fetchFeedXml(source) {
     const startedAt = Date.now();
-    let response;
-
-    const sourceUrlValidation = await validateOutboundHttpUrl(source.url, {
+    let currentValidation = await validateOutboundHttpUrl(source.url, {
         allowPrivateNetwork: false,
         resolveDns: true
     });
-    if (!sourceUrlValidation.ok) {
+    if (!currentValidation.ok) {
         return {
             ok: false,
-            error: `source_url_blocked:${sourceUrlValidation.reason}`,
+            error: `source_url_blocked:${currentValidation.reason}`,
             durationMs: Date.now() - startedAt
         };
     }
 
-    try {
-        response = await axios.get(sourceUrlValidation.normalizedUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'application/rss+xml, application/xml, text/xml, */*'
-            },
-            timeout: FEED_TIMEOUT_MS,
-            maxRedirects: FEED_MAX_REDIRECTS,
-            responseType: 'arraybuffer',
-            validateStatus: () => true
+    let response;
+    let redirectCount = 0;
+    while (redirectCount <= MAX_SAFE_REDIRECTS) {
+        try {
+            response = await axios.get(currentValidation.normalizedUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+                },
+                timeout: FEED_TIMEOUT_MS,
+                lookup: createPinnedLookup(currentValidation.addresses),
+                // Follow redirects manually so each destination is DNS-validated and pinned.
+                maxRedirects: 0,
+                responseType: 'arraybuffer',
+                validateStatus: () => true
+            });
+        } catch (error) {
+            return {
+                ok: false,
+                error: `request_failed: ${error.message}`,
+                durationMs: Date.now() - startedAt
+            };
+        }
+
+        if (response.status < 300 || response.status >= 400) {
+            break;
+        }
+
+        const location = response.headers?.location;
+        if (!location) {
+            break;
+        }
+
+        if (redirectCount === MAX_SAFE_REDIRECTS) {
+            return {
+                ok: false,
+                error: 'too_many_redirects',
+                status: response.status,
+                durationMs: Date.now() - startedAt,
+                finalUrl: currentValidation.normalizedUrl
+            };
+        }
+
+        let redirectUrl;
+        try {
+            redirectUrl = new URL(location, currentValidation.normalizedUrl).toString();
+        } catch {
+            return {
+                ok: false,
+                error: 'invalid_redirect_location',
+                status: response.status,
+                durationMs: Date.now() - startedAt,
+                finalUrl: currentValidation.normalizedUrl
+            };
+        }
+
+        currentValidation = await validateOutboundHttpUrl(redirectUrl, {
+            allowPrivateNetwork: false,
+            resolveDns: true
         });
-    } catch (error) {
-        return {
-            ok: false,
-            error: `request_failed: ${error.message}`,
-            durationMs: Date.now() - startedAt
-        };
+        if (!currentValidation.ok) {
+            return {
+                ok: false,
+                error: `redirect_url_blocked:${currentValidation.reason}`,
+                status: response.status,
+                durationMs: Date.now() - startedAt
+            };
+        }
+
+        redirectCount += 1;
     }
 
     const durationMs = Date.now() - startedAt;
-    const finalUrl = getResponseUrl(response, source.url);
+    const finalUrl = currentValidation.normalizedUrl;
     const status = response.status;
 
     if (status < 200 || status >= 300) {
@@ -1090,7 +1145,7 @@ async function fetchAndProcessFeed(source) {
                 if (!image && item.link && ENABLE_IMAGE_RECOVERY_FETCH) {
                     const linkValidation = await validateOutboundHttpUrl(itemLink, {
                         allowPrivateNetwork: false,
-                        resolveDns: false
+                        resolveDns: true
                     });
                     if (!linkValidation.ok) {
                         imageRecoveryFailures++;
@@ -1098,8 +1153,10 @@ async function fetchAndProcessFeed(source) {
                         try {
                             const response = await axios.get(linkValidation.normalizedUrl, {
                                 timeout: IMAGE_RECOVERY_TIMEOUT_MS,
+                                lookup: createPinnedLookup(linkValidation.addresses),
                                 maxContentLength: IMAGE_RECOVERY_MAX_BYTES,
                                 maxBodyLength: IMAGE_RECOVERY_MAX_BYTES,
+                                maxRedirects: 0,
                                 responseType: 'text',
                                 headers: {
                                     'User-Agent': 'Mozilla/5.0 (compatible; NewsAI/1.0; +https://localhost)',
@@ -1199,39 +1256,39 @@ async function updateAllFeeds() {
     }
 
     activeUpdatePromise = (async () => {
+        feedUpdateStatus.isRunning = true;
+        feedUpdateStatus.lastStartedAt = new Date().toISOString();
+        feedUpdateStatus.lastError = null;
         console.log('Starting RSS feed update...');
 
-        // Run cleanup before update
-        await cleanupOldArticles();
-        await clampFutureArticleDates();
-        await applyKnownSourceCorrections();
-        await backfillMissingArticleImagesFromSources();
-        await collapseDuplicateArticlesBySourceNumericId();
+        try {
+            // Run maintenance before concurrent feed retrieval.
+            await cleanupOldArticles();
+            await clampFutureArticleDates();
+            await applyKnownSourceCorrections();
+            await backfillMissingArticleImagesFromSources();
+            await collapseDuplicateArticlesBySourceNumericId();
 
-        const sources = await prisma.source.findMany();
-        let totalNew = 0;
-        let skippedInactive = 0;
-        let skippedCooldown = 0;
-        const now = new Date();
+            const sources = await prisma.source.findMany();
+            const now = new Date();
+            const eligibleSources = sources.filter((source) => source.isActive && !isSourceInCooldown(source, now));
+            const skippedInactive = sources.filter((source) => !source.isActive).length;
+            const skippedCooldown = sources.length - skippedInactive - eligibleSources.length;
+            const results = await runWithConcurrency(eligibleSources, FEED_CONCURRENCY, fetchAndProcessFeed);
+            const totalNew = results.reduce((total, result) => total + result, 0);
 
-        for (const source of sources) {
-            if (!source.isActive) {
-                skippedInactive++;
-                continue;
-            }
-
-            if (isSourceInCooldown(source, now)) {
-                skippedCooldown++;
-                continue;
-            }
-
-            totalNew += await fetchAndProcessFeed(source);
+            feedUpdateStatus.lastNewArticles = totalNew;
+            console.log(
+                `RSS Update complete. ${totalNew} new articles added. skippedInactive=${skippedInactive} skippedCooldown=${skippedCooldown} concurrency=${FEED_CONCURRENCY}`
+            );
+            return totalNew;
+        } catch (error) {
+            feedUpdateStatus.lastError = normalizeErrorMessage(error.message);
+            throw error;
+        } finally {
+            feedUpdateStatus.isRunning = false;
+            feedUpdateStatus.lastCompletedAt = new Date().toISOString();
         }
-
-        console.log(
-            `RSS Update complete. ${totalNew} new articles added. skippedInactive=${skippedInactive} skippedCooldown=${skippedCooldown}`
-        );
-        return totalNew;
     })();
 
     try {
@@ -1241,8 +1298,35 @@ async function updateAllFeeds() {
     }
 }
 
+async function runWithConcurrency(items, concurrency, worker) {
+    const results = new Array(items.length).fill(0);
+    let nextIndex = 0;
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+        while (nextIndex < items.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            results[index] = await worker(items[index]);
+        }
+    });
+    await Promise.all(workers);
+    return results;
+}
+
+function getFeedUpdateStatus() {
+    return { ...feedUpdateStatus };
+}
+
+function requestFeedRefresh() {
+    const alreadyRunning = Boolean(activeUpdatePromise);
+    // The caller receives an immediate 202; errors remain visible through /health.
+    updateAllFeeds().catch((error) => console.error('[RSS] Manual refresh failed:', error));
+    return { alreadyRunning, status: getFeedUpdateStatus() };
+}
+
 module.exports = {
     updateAllFeeds,
+    requestFeedRefresh,
+    getFeedUpdateStatus,
     fetchAndProcessFeed,
     cleanupOldArticles,
     applyKnownSourceCorrections,

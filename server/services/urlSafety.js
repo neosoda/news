@@ -16,15 +16,26 @@ function isPrivateIPv4(address) {
         a === 0 ||
         a === 10 ||
         a === 127 ||
+        (a === 100 && b >= 64 && b <= 127) ||
         (a === 169 && b === 254) ||
         (a === 172 && b >= 16 && b <= 31) ||
-        (a === 192 && b === 168)
+        (a === 192 && b === 168) ||
+        (a === 192 && b === 0) ||
+        (a === 192 && b === 2) ||
+        (a === 198 && (b === 18 || b === 19 || b === 51)) ||
+        (a === 203 && b === 0) ||
+        a >= 224
     );
 }
 
 function isPrivateIPv6(address) {
     const normalized = address.toLowerCase();
+    const mappedIpv4 = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mappedIpv4) {
+        return isPrivateIPv4(mappedIpv4[1]);
+    }
     return (
+        normalized === '::' ||
         normalized === '::1' ||
         normalized.startsWith('fc') ||
         normalized.startsWith('fd') ||
@@ -87,7 +98,7 @@ async function validateOutboundHttpUrl(rawUrl, options = {}) {
         return { ok: false, reason: 'protocol_not_allowed' };
     }
 
-    const hostname = parsed.hostname.toLowerCase();
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     if (isBlockedHostname(hostname)) {
         return { ok: false, reason: 'hostname_blocked' };
     }
@@ -96,7 +107,7 @@ async function validateOutboundHttpUrl(rawUrl, options = {}) {
         if (!allowPrivateNetwork && isPrivateOrLoopbackAddress(hostname)) {
             return { ok: false, reason: 'private_address_blocked' };
         }
-        return { ok: true, normalizedUrl: parsed.toString(), hostname };
+        return { ok: true, normalizedUrl: parsed.toString(), hostname, addresses: [hostname] };
     }
 
     if (!allowPrivateNetwork && resolveDns) {
@@ -109,14 +120,23 @@ async function validateOutboundHttpUrl(rawUrl, options = {}) {
             if (addresses.some((address) => isPrivateOrLoopbackAddress(address))) {
                 return { ok: false, reason: 'private_resolution_blocked' };
             }
+            return { ok: true, normalizedUrl: parsed.toString(), hostname, addresses };
         } catch {
             return { ok: false, reason: 'dns_lookup_failed' };
         }
     }
 
-    return { ok: true, normalizedUrl: parsed.toString(), hostname };
+    return { ok: true, normalizedUrl: parsed.toString(), hostname, addresses: [] };
+}
+
+function createPinnedLookup(addresses = []) {
+    const address = addresses[0];
+    if (!address) return undefined;
+    const family = net.isIP(address);
+    return (hostname, options, callback) => callback(null, address, family);
 }
 
 module.exports = {
-    validateOutboundHttpUrl
+    validateOutboundHttpUrl,
+    createPinnedLookup
 };

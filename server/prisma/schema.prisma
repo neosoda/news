@@ -25,6 +25,8 @@ model Source {
   lastFetched DateTime?
   createdAt   DateTime  @default(now())
   articles    Article[]
+
+  @@index([isActive, cooldownUntil])
 }
 
 model Article {
@@ -45,4 +47,17 @@ model Article {
   sourceId      Int
   source        Source   @relation(fields: [sourceId], references: [id])
   createdAt     DateTime @default(now())
+
+  @@index([date])
+  @@index([category, date])
+  @@index([isBookmarked, date])
+  @@index([sourceId, date])
+}
+
+model DailyBrief {
+  id        Int      @id @default(autoincrement())
+  dateKey   String   @unique
+  payload   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
