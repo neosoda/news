@@ -13,6 +13,7 @@ app.use(express.json());
 const apiRoutes = require('./routes');
 const cron = require('node-cron');
 const { updateAllFeeds } = require('./services/rss');
+const { ensureBreachSources } = require('./services/breachSources');
 
 app.use('/api', apiRoutes);
 // Routes are handled in routes.js
@@ -35,6 +36,7 @@ if (hasClientBuild) {
 
 async function runFeedRefresh(trigger) {
     try {
+        await ensureBreachSources();
         await updateAllFeeds();
     } catch (error) {
         console.error(`[RSS] Refresh failed (${trigger}):`, error);

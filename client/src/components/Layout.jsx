@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, ShieldAlert, Sun, Moon } from 'lucide-react';
 import clsx from 'clsx';
 
 function NavItem({ to, icon, children, onClick }) {
@@ -36,6 +36,7 @@ export default function Layout({ children, onSearch, theme, onToggleTheme }) {
             case '/': return 'Dashboard';
             case '/daily-brief': return 'Brief IA Quotidien';
             case '/videos': return 'Vidéos IA & Tech';
+            case '/breaches': return 'Fuites de données';
             case '/sources': return 'Sources RSS';
             case '/bookmarks': return 'Articles favoris';
             default: return 'Actualités';
@@ -74,6 +75,7 @@ export default function Layout({ children, onSearch, theme, onToggleTheme }) {
                     <NavItem to="/" icon={LayoutDashboard} onClick={closeSidebar}>Articles</NavItem>
                     <NavItem to="/daily-brief" icon={Zap} onClick={closeSidebar}>Brief IA</NavItem>
                     <NavItem to="/videos" icon={PlayCircle} onClick={closeSidebar}>Vidéos</NavItem>
+                    <NavItem to="/breaches" icon={ShieldAlert} onClick={closeSidebar}>Fuites de données</NavItem>
                     <NavItem to="/bookmarks" icon={Bookmark} onClick={closeSidebar}>Favoris</NavItem>
                     <NavItem to="/sources" icon={Rss} onClick={closeSidebar}>Sources</NavItem>
                 </nav>

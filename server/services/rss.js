@@ -1,4 +1,5 @@
 const Parser = require('rss-parser');
+const crypto = require('crypto');
 const prisma = require('../db');
 const parser = new Parser({
     headers: {
@@ -56,6 +57,25 @@ function buildSourceFaviconUrl(rawUrl) {
         return `${parsed.protocol}//${parsed.hostname}/favicon.ico`;
     } catch {
         return null;
+    }
+}
+
+function buildFallbackItemLink(sourceUrl, item) {
+    const stableValue = [
+        item?.guid || '',
+        item?.title || '',
+        item?.pubDate || item?.isoDate || ''
+    ].join('|');
+    const fingerprint = crypto.createHash('sha256').update(stableValue).digest('hex').slice(0, 20);
+
+    try {
+        const source = new URL(sourceUrl);
+        source.pathname = source.pathname.replace(/\/(?:feed|rss|atom)(?:\.[a-z0-9]+)?$/i, '/') || '/';
+        source.search = '';
+        source.hash = `entry-${fingerprint}`;
+        return source.toString();
+    } catch {
+        return `${sourceUrl}#entry-${fingerprint}`;
     }
 }
 
@@ -977,12 +997,12 @@ async function fetchAndProcessFeed(source) {
 
             recentItems++;
 
+            const itemLink = item.link || buildFallbackItemLink(effectiveSource.url, item);
             if (!item.link) {
                 skippedMissingLink++;
-                continue;
             }
 
-            const normalizedLink = normalizeUrl(item.link);
+            const normalizedLink = normalizeUrl(itemLink);
 
             const articleFingerprint = computeArticleFingerprint({
                 title: item.title,
@@ -1011,7 +1031,7 @@ async function fetchAndProcessFeed(source) {
             // Check for existing article by normalized/original link and by semantic key.
             const duplicateCriteria = [
                 { link: normalizedLink },
-                { link: item.link }
+                { link: itemLink }
             ];
 
             if (articleFingerprint) {
@@ -1030,7 +1050,7 @@ async function fetchAndProcessFeed(source) {
                 duplicateCriteria.push({ dedupKey: legacyArticleDedupKey });
             }
 
-            const linkNumericId = extractArticleNumericIdFromLink(normalizedLink) || extractArticleNumericIdFromLink(item.link);
+            const linkNumericId = extractArticleNumericIdFromLink(normalizedLink) || extractArticleNumericIdFromLink(itemLink);
             if (linkNumericId) {
                 duplicateCriteria.push({
                     AND: [
@@ -1064,11 +1084,11 @@ async function fetchAndProcessFeed(source) {
             await new Promise(resolve => setTimeout(resolve, 200));
 
             try {
-                let image = extractImageFromFeedItem(item, item.link || effectiveSource.url);
+                let image = extractImageFromFeedItem(item, itemLink || effectiveSource.url);
 
                 // 3. Deep recovery: Fetch page and look for og:image
                 if (!image && item.link && ENABLE_IMAGE_RECOVERY_FETCH) {
-                    const linkValidation = await validateOutboundHttpUrl(item.link, {
+                    const linkValidation = await validateOutboundHttpUrl(itemLink, {
                         allowPrivateNetwork: false,
                         resolveDns: false
                     });
@@ -1110,7 +1130,7 @@ async function fetchAndProcessFeed(source) {
                 }
 
                 try {
-                    const finalImage = normalizeImageUrl(image, item.link || effectiveSource.url) || sourceFallbackImage;
+                    const finalImage = normalizeImageUrl(image, itemLink || effectiveSource.url) || sourceFallbackImage;
                     await prisma.article.create({
                         data: {
                             title: titleFr,          // Titre traduit en français
@@ -1136,7 +1156,7 @@ async function fetchAndProcessFeed(source) {
                 }
             } catch (itemError) {
                 processingErrors++;
-                console.error(`[RSS] Item processing failed ${sourceLabel} link="${item.link}" reason="${itemError.message}"`);
+                console.error(`[RSS] Item processing failed ${sourceLabel} link="${itemLink}" reason="${itemError.message}"`);
             }
         }
 

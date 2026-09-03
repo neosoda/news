@@ -6,6 +6,7 @@ Une application web complète de veille technologique automatisée, conçue avec
 ## 🚀 Fonctionnalités
 
 - **Veille Automatisée** : Récupération automatique des flux RSS toutes les 30 minutes et dès le démarrage.
+- **Fuites de données** : Une rubrique dédiée agrège Bonjour la fuite, Fuites Infos et FrenchBreaches, avec source, date et contexte pour chaque alerte.
 - **Traduction Gratuite** : [LibreTranslate](https://translate.techsentinel.fr) (auto-hébergé) assure la traduction EN→FR sans quota.
 - **IA en Cascade** : Résumé, catégorisation et fallback de traduction via **Groq** (prioritaire), puis **Mistral**, puis **OpenRouter** (modèles gratuits).
 - **Fallback Robuste** : Si LibreTranslate est indisponible, la traduction bascule automatiquement sur le LLM en cascade (Groq → Mistral → OpenRouter).

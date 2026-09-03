@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const { BREACH_SOURCES } = require('../services/breachSources');
 const prisma = new PrismaClient();
 
 async function main() {
@@ -25,6 +26,9 @@ async function main() {
         { name: 'Krebs on Security', url: 'https://krebsonsecurity.com/feed/', category: 'Cybersecurité' },
         { name: 'Schneier on Security', url: 'https://www.schneier.com/blog/atom.xml', category: 'Cybersecurité' },
         { name: 'Dark Reading', url: 'https://www.darkreading.com/rss.xml', category: 'Cybersecurité' },
+
+        // Fuites de données
+        ...BREACH_SOURCES,
 
         // Intelligence Artificielle
         { name: 'ActuIA', url: 'https://www.actuia.com/feed/', category: 'AI' },
