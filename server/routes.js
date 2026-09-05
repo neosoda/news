@@ -6,7 +6,12 @@ const { fetchVideos, parseLimit, parseTopics } = require('./services/videos');
 const { validateOutboundHttpUrl } = require('./services/urlSafety');
 const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./services/feedUrlCatalog');
 const { requireAdmin, limitAdminMutation, limitSummarization } = require('./services/adminAuth');
-const { getFeedUpdateStatus, requestFeedRefresh } = require('./services/rss');
+const {
+    getFeedUpdateStatus,
+    requestFeedRefresh,
+    repairAllArticlesEncoding,
+    repairArticleFieldsInPlace
+} = require('./services/rss');
 const prisma = require('./db');
 
 const MAX_PAGE_SIZE = 100;
@@ -15,6 +20,36 @@ const MAX_FUTURE_SKEW_MS = 6 * 60 * 60 * 1000;
 const MAX_SOURCE_NAME_LENGTH = 120;
 const MAX_SOURCE_CATEGORY_LENGTH = 64;
 const RANKING_MINUTE_MS = 60 * 1000;
+
+// Categories kept out of the general article feed (Dashboard, Daily Brief,
+// category chips, search). They live in their own dedicated page; the Breaches
+// page passes this label explicitly through the `category` query parameter to
+// reach them, which is the only path that should ever return them.
+const BREACH_CATEGORY_LABEL = 'Fuites de données';
+const BREACH_CATEGORY_VALUES = new Set([BREACH_CATEGORY_LABEL]);
+
+function isBreachCategory(value) {
+    return typeof value === 'string' && BREACH_CATEGORY_VALUES.has(value);
+}
+
+/**
+ * Prisma "where" fragment that hides breach articles from a feed-style query.
+ * Articles that have either a direct category OR a source category matching the
+ * breach label are excluded. Returns null when the caller has asked for breach
+ * articles explicitly (via the category parameter), so the helper becomes a
+ * no-op in that case.
+ */
+function buildBreachExclusionWhere({ allowBreaches = false } = {}) {
+    if (allowBreaches) {
+        return null;
+    }
+    return {
+        AND: [
+            { category: { notIn: [...BREACH_CATEGORY_VALUES] } },
+            { source: { category: { notIn: [...BREACH_CATEGORY_VALUES] } } }
+        ]
+    };
+}
 const CATEGORY_RANK_BOOST_MINUTES = {
     'Cybersecurité': 90,
     'Intelligence Artificielle': 75,
@@ -172,6 +207,15 @@ router.get('/articles', async (req, res) => {
     // Filtre de source
     if (sourceId !== null) {
         conditions.push({ sourceId });
+    }
+
+    // Les articles "Fuites de données" ne vivent que dans la page dédiée.
+    // On ne les inclut ici que si la catégorie demandée est explicitement
+    // celle des fuites de données (cas de la page Breaches).
+    const allowBreaches = isBreachCategory(category);
+    const breachExclusion = buildBreachExclusionWhere({ allowBreaches });
+    if (breachExclusion) {
+        conditions.push(breachExclusion);
     }
 
     // Combiner toutes les conditions avec AND
@@ -354,15 +398,83 @@ router.post('/sources/refresh', limitAdminMutation, (req, res) => {
     });
 });
 
+// POST /admin/repair-encoding - Walk the Article table and repair any field
+// still tainted by UTF-8/Latin-1 mojibake. The fix is now applied in-band for
+// new translations, but the historical rows that were stored before the fix
+// (visible in the "Fuites de données" view as "donn\u00c3\u00a9es") need a
+// one-shot sweep. Idempotent: only writes rows that actually changed.
+const REPAIR_BATCH_SIZE_MAX = 500;
+router.post('/admin/repair-encoding', requireAdmin, limitAdminMutation, async (req, res) => {
+    const dryRun = req.query.dryRun === 'true' || req.body?.dryRun === true;
+    const requestedBatch = Number.parseInt(req.body?.batchSize, 10);
+    const batchSize = Number.isInteger(requestedBatch) && requestedBatch > 0
+        ? Math.min(requestedBatch, REPAIR_BATCH_SIZE_MAX)
+        : 100;
+
+    try {
+        if (dryRun) {
+            // Detection-only pass: scan and tally without writing.
+            const REPAIRABLE = ['title', 'originalTitle', 'content', 'summary', 'keywords'];
+            const fieldCounts = Object.fromEntries(REPAIRABLE.map((field) => [field, 0]));
+            let scanned = 0;
+            let wouldRepair = 0;
+            let lastId = 0;
+            while (true) {
+                const batch = await prisma.article.findMany({
+                    where: { id: { gt: lastId } },
+                    orderBy: { id: 'asc' },
+                    take: batchSize,
+                    select: {
+                        id: true,
+                        title: true,
+                        originalTitle: true,
+                        content: true,
+                        summary: true,
+                        keywords: true
+                    }
+                });
+                if (batch.length === 0) break;
+                for (const article of batch) {
+                    scanned += 1;
+                    lastId = article.id;
+                    const { changed, fields } = repairArticleFieldsInPlace(article);
+                    if (!changed) continue;
+                    wouldRepair += 1;
+                    for (const field of fields) {
+                        fieldCounts[field] = (fieldCounts[field] || 0) + 1;
+                    }
+                }
+            }
+            return res.json({
+                dryRun: true,
+                scanned,
+                wouldRepair,
+                fieldCounts
+            });
+        }
+
+        const summary = await repairAllArticlesEncoding({ batchSize });
+        return res.json({
+            dryRun: false,
+            ...summary
+        });
+    } catch (error) {
+        console.error('Encoding repair failed:', error.message);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
 // GET /articles/stats - Get article count by category
 router.get('/articles/stats', async (req, res) => {
     try {
         // Get all articles with their categories
         const maxAllowedDate = new Date(Date.now() + MAX_FUTURE_SKEW_MS);
+        const breachExclusion = buildBreachExclusionWhere();
         const articles = await prisma.article.findMany({
             where: {
                 date: { lte: maxAllowedDate },
-                OR: [{ category: null }, { category: { not: 'Spam' } }]
+                OR: [{ category: null }, { category: { not: 'Spam' } }],
+                ...(breachExclusion || {})
             },
             select: {
                 category: true,
@@ -460,6 +572,7 @@ router.get('/bookmarks', async (req, res) => {
 });
 
 const { generateCategoryBrief } = require('./services/ai');
+const { repairMojibakeDeep } = require('./services/encoding');
 
 // GET /daily-brief - Generate daily highlights
 router.get('/daily-brief', async (req, res) => {
@@ -470,7 +583,11 @@ router.get('/daily-brief', async (req, res) => {
 
         if (isFresh) {
             try {
-                return res.json(JSON.parse(cachedBrief.payload));
+                // Repair any mojibake that was cached before the post-processing
+                // guardrails were added (the cached JSON was generated by older
+                // LLM responses that hadn't been re-decoded).
+                const parsed = JSON.parse(cachedBrief.payload);
+                return res.json(repairMojibakeDeep(parsed));
             } catch (error) {
                 console.warn('Ignoring an invalid cached daily brief:', error.message);
             }
@@ -479,11 +596,15 @@ router.get('/daily-brief', async (req, res) => {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
 
-        // 1. Fetch articles from last 24h
+        // 1. Fetch articles from last 24h. Breach articles are intentionally
+        // excluded: they live in their own dedicated page, the daily tech
+        // brief must not surface them.
+        const breachExclusion = buildBreachExclusionWhere();
         const articles = await prisma.article.findMany({
             where: {
                 date: { gt: yesterday },
-                category: { not: 'Spam' }
+                category: { not: 'Spam' },
+                ...(breachExclusion || {})
             },
             include: { source: true },
             orderBy: { date: 'desc' }

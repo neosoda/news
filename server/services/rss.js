@@ -18,6 +18,11 @@ const {
 } = require('./articleDedup');
 const { validateOutboundHttpUrl, createPinnedLookup } = require('./urlSafety');
 const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./feedUrlCatalog');
+const {
+    containsMojibake,
+    repairMojibake,
+    repairMojibakeDeep
+} = require('./encoding');
 
 const FEED_TIMEOUT_MS = 10000;
 const MAX_SAFE_REDIRECTS = 5;
@@ -27,7 +32,6 @@ const IMAGE_RECOVERY_MAX_BYTES = 1024 * 1024;
 const ENABLE_IMAGE_RECOVERY_FETCH = process.env.ENABLE_IMAGE_RECOVERY_FETCH !== 'false';
 const MAX_SOURCE_ERROR_LENGTH = 400;
 const FEED_XML_CHARSET_SCAN_BYTES = 2048;
-const ENCODING_ARTIFACT_PATTERN = /[\uFFFD\u00C3\u00C2]|\u00E2\u20AC/u;
 
 let activeUpdatePromise = null;
 const feedUpdateStatus = {
@@ -437,7 +441,7 @@ function getDuplicateWinnerScore(article) {
     }
 
     let score = 0;
-    if (!containsEncodingArtifacts(article.title) && !containsEncodingArtifacts(article.originalTitle)) {
+    if (!containsMojibake(article.title) && !containsMojibake(article.originalTitle)) {
         score += 100;
     }
     if (article.isBookmarked) {
@@ -566,13 +570,6 @@ function sanitizeArticleDate(articleDate) {
     }
 
     return parsedDate;
-}
-
-function containsEncodingArtifacts(value) {
-    if (typeof value !== 'string' || !value) {
-        return false;
-    }
-    return ENCODING_ARTIFACT_PATTERN.test(value);
 }
 
 function countReplacementCharacters(value) {
@@ -713,9 +710,9 @@ function getItemTextPayload(item) {
 }
 
 async function repairExistingArticleEncoding(existing, item, source, sourceFallbackImage) {
-    const shouldRepairTitle = containsEncodingArtifacts(existing?.title);
-    const shouldRepairOriginalTitle = containsEncodingArtifacts(existing?.originalTitle);
-    const shouldRepairContent = containsEncodingArtifacts(existing?.content);
+    const shouldRepairTitle = containsMojibake(existing?.title);
+    const shouldRepairOriginalTitle = containsMojibake(existing?.originalTitle);
+    const shouldRepairContent = containsMojibake(existing?.content);
     const shouldRepairImage = !existing?.image;
 
     if (!shouldRepairTitle && !shouldRepairOriginalTitle && !shouldRepairContent && !shouldRepairImage) {
@@ -725,16 +722,16 @@ async function repairExistingArticleEncoding(existing, item, source, sourceFallb
     const { title: itemTitle, content: itemContent } = getItemTextPayload(item);
     const updateData = {};
 
-    if ((shouldRepairOriginalTitle || !existing.originalTitle) && itemTitle && !containsEncodingArtifacts(itemTitle)) {
+    if ((shouldRepairOriginalTitle || !existing.originalTitle) && itemTitle && !containsMojibake(itemTitle)) {
         updateData.originalTitle = itemTitle;
     }
 
-    if (shouldRepairTitle && itemTitle && !containsEncodingArtifacts(itemTitle)) {
+    if (shouldRepairTitle && itemTitle && !containsMojibake(itemTitle)) {
         const translatedTitle = await translateText(itemTitle);
         updateData.title = sanitizeInlineText(translatedTitle || itemTitle);
     }
 
-    if (shouldRepairContent && itemContent && !containsEncodingArtifacts(itemContent)) {
+    if (shouldRepairContent && itemContent && !containsMojibake(itemContent)) {
         const translatedContent = await translateText(itemContent);
         updateData.content = sanitizeRichText(translatedContent || itemContent);
     }
@@ -764,6 +761,110 @@ async function repairExistingArticleEncoding(existing, item, source, sourceFallb
     });
 
     return true;
+}
+
+const REPAIRABLE_ARTICLE_FIELDS = ['title', 'originalTitle', 'content', 'summary', 'keywords'];
+
+/**
+ * Repair UTF-8/Latin-1 mojibake on a single article's stored fields. Used by:
+ *  - the one-shot DB repair script,
+ *  - the admin endpoint that triggers a full sweep,
+ *  - the maintenance pass in updateAllFeeds (so the feed cycle also self-heals
+ *    rows that won't be re-fetched for any reason).
+ *
+ * Returns an object describing what was changed so the caller can decide
+ * whether to log / report. Never throws on a single field failure.
+ */
+function repairArticleFieldsInPlace(article) {
+    if (!article || typeof article !== 'object') {
+        return { changed: false, fields: [] };
+    }
+
+    const fields = [];
+    const next = {};
+
+    for (const field of REPAIRABLE_ARTICLE_FIELDS) {
+        const value = article[field];
+        if (typeof value !== 'string' || !value) {
+            continue;
+        }
+        if (!containsMojibake(value)) {
+            continue;
+        }
+        const repaired = repairMojibake(value);
+        if (repaired !== value) {
+            next[field] = repaired;
+            fields.push(field);
+        }
+    }
+
+    return { changed: fields.length > 0, fields, next };
+}
+
+async function persistArticleFieldRepairs(articleId, next) {
+    if (!articleId || !next || Object.keys(next).length === 0) {
+        return false;
+    }
+    await prisma.article.update({
+        where: { id: articleId },
+        data: next
+    });
+    return true;
+}
+
+/**
+ * Sweep the whole Article table and repair every mojibake-tainted field. Designed
+ * to be safe to run repeatedly: it only writes rows that actually changed.
+ *
+ * Returns a summary: { scanned, repaired, fieldCounts: { title: n, ... } }.
+ */
+async function repairAllArticlesEncoding({ batchSize = 100 } = {}) {
+    const fieldCounts = Object.fromEntries(REPAIRABLE_ARTICLE_FIELDS.map((field) => [field, 0]));
+    let scanned = 0;
+    let repaired = 0;
+    let lastId = 0;
+
+    while (true) {
+        const batch = await prisma.article.findMany({
+            where: { id: { gt: lastId } },
+            orderBy: { id: 'asc' },
+            take: batchSize,
+            select: {
+                id: true,
+                title: true,
+                originalTitle: true,
+                content: true,
+                summary: true,
+                keywords: true
+            }
+        });
+
+        if (batch.length === 0) {
+            break;
+        }
+
+        for (const article of batch) {
+            scanned += 1;
+            lastId = article.id;
+
+            const { changed, fields, next } = repairArticleFieldsInPlace(article);
+            if (!changed) {
+                continue;
+            }
+
+            try {
+                await persistArticleFieldRepairs(article.id, next);
+                repaired += 1;
+                for (const field of fields) {
+                    fieldCounts[field] = (fieldCounts[field] || 0) + 1;
+                }
+            } catch (error) {
+                console.error(`[RSS] Encoding repair failed articleId=${article.id} reason="${error.message}"`);
+            }
+        }
+    }
+
+    return { scanned, repaired, fieldCounts };
 }
 
 
@@ -1269,6 +1370,20 @@ async function updateAllFeeds() {
             await backfillMissingArticleImagesFromSources();
             await collapseDuplicateArticlesBySourceNumericId();
 
+            // Self-heal any mojibake that slipped into the database before the
+            // post-processing guardrails were added. Cheap on small datasets
+            // and only writes rows that actually changed.
+            try {
+                const repairSummary = await repairAllArticlesEncoding();
+                if (repairSummary.repaired > 0) {
+                    console.log(
+                        `[RSS] Encoding repair sweep repaired=${repairSummary.repaired} scanned=${repairSummary.scanned} fields=${JSON.stringify(repairSummary.fieldCounts)}`
+                    );
+                }
+            } catch (repairError) {
+                console.error(`[RSS] Encoding repair sweep failed: ${repairError.message}`);
+            }
+
             const sources = await prisma.source.findMany();
             const now = new Date();
             const eligibleSources = sources.filter((source) => source.isActive && !isSourceInCooldown(source, now));
@@ -1331,5 +1446,8 @@ module.exports = {
     cleanupOldArticles,
     applyKnownSourceCorrections,
     backfillMissingArticleImagesFromSources,
-    collapseDuplicateArticlesBySourceNumericId
+    collapseDuplicateArticlesBySourceNumericId,
+    repairAllArticlesEncoding,
+    repairArticleFieldsInPlace,
+    persistArticleFieldRepairs
 };

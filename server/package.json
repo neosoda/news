@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test test/adminAuth.test.js test/adminRoutes.test.js test/urlSafety.test.js",
-    "dev": "nodemon index.js"
+    "test": "node --test test/adminAuth.test.js test/adminRoutes.test.js test/urlSafety.test.js test/encoding.test.js test/articleFeedExclusion.test.js",
+    "dev": "nodemon index.js",
+    "repair:encoding": "node scripts/repair-encoding.js"
   },
   "keywords": [],
   "author": "",

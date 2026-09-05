@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { generateResponse } = require('./openrouter');
+const { repairMojibake } = require('./encoding');
 
 let isLibreTranslateAvailable = true;
 let lastLibreTranslateCheck = 0;
@@ -153,12 +154,13 @@ async function summarizeArticle(content) {
     }
 
     try {
-        return await generateResponse(content.substring(0, 2000), {
+        const raw = await generateResponse(content.substring(0, 2000), {
             systemPrompt: 'Tu es un assistant expert en synthèse de news tech. Résume cet article en français de manière concise (max 3 phrases). Analyse le sentiment (Positif/Neutre/Négatif) et extrais 3 mots-clés.',
             temperature: 0.3,
             maxTokens: 400,
             timeoutMs: 20000
         });
+        return repairMojibake(raw);
     } catch (error) {
         console.error('Summarization Error:', error.message, error.failures || '');
         throw error;
@@ -180,11 +182,20 @@ async function translateText(text) {
             source: 'auto',
             target: 'fr',
             format: 'text'
-        }, { timeout: 3000 });
+        }, {
+            timeout: 3000,
+            // Force UTF-8 decoding regardless of any wrong charset the
+            // LibreTranslate server may advertise. Its Flask deployment has
+            // historically returned Latin-1-looking bytes inside a JSON body,
+            // which axios would otherwise treat as Latin-1 and mangle into
+            // the "donn\u00c3\u00a9es" mojibake.
+            responseEncoding: 'utf8',
+            transitional: { silentJSONParsing: false }
+        });
 
         if (response.data && response.data.translatedText) {
             isLibreTranslateAvailable = true;
-            return response.data.translatedText;
+            return repairMojibake(response.data.translatedText);
         }
     } catch (error) {
         if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
@@ -203,12 +214,13 @@ async function translateText(text) {
 
 async function fallbackToLLM(text) {
     try {
-        return await generateResponse(text.substring(0, 500), {
+        const raw = await generateResponse(text.substring(0, 500), {
             systemPrompt: 'Tu es un traducteur professionnel. Traduis le texte suivant en français. Ne donne que la traduction, sans explications.',
             temperature: 0,
             maxTokens: 300,
             timeoutMs: 15000
         });
+        return repairMojibake(raw);
     } catch (error) {
         console.error('Translation Error (LLM fallback):', error.message, error.failures || '');
         return text;
@@ -229,9 +241,10 @@ async function categorizeArticle(title, content) {
             }
         );
 
-        const normalizedCategory = normalizeCategory(rawCategory);
+        const repairedCategory = repairMojibake(rawCategory);
+        const normalizedCategory = normalizeCategory(repairedCategory);
         if (!normalizedCategory) {
-            console.warn(`Categorization returned an invalid label: "${rawCategory}"`);
+            console.warn(`Categorization returned an invalid label: "${repairedCategory}"`);
             return categorizeArticleLocally(title, content);
         }
         return normalizedCategory;
@@ -250,7 +263,7 @@ async function generateCategoryBrief(category, articles) {
         .join('\n');
 
     try {
-        return await generateResponse(
+        const raw = await generateResponse(
             `Voici les dernières actualités pour la catégorie ${category}:\n\n${inputContent}`,
             {
                 systemPrompt: `Tu es un journaliste expert tech. Rédige un "Brief Quotidien" pour la catégorie "${category}".
@@ -266,6 +279,7 @@ IMPORTANT: Ne base ton résumé QUE sur les titres fournis. N'invente rien.`,
                 timeoutMs: 25000
             }
         );
+        return repairMojibake(raw);
     } catch (error) {
         console.error(`Daily Brief Error (${category}):`, error.message, error.failures || '');
         return 'Impossible de générer le résumé pour le moment.';
