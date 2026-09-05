@@ -12,6 +12,7 @@ const {
     repairAllArticlesEncoding,
     repairArticleFieldsInPlace
 } = require('./services/rss');
+const { repairMojibake, repairMojibakeDeep } = require('./services/encoding');
 const prisma = require('./db');
 
 const MAX_PAGE_SIZE = 100;
@@ -238,7 +239,7 @@ router.get('/articles', async (req, res) => {
         const total = await prisma.article.count({ where });
 
         res.json({
-            data: rankArticlesForDailyScan(articles),
+            data: repairMojibakeDeep(rankArticlesForDailyScan(articles)),
             pagination: {
                 total,
                 page,
@@ -515,7 +516,7 @@ router.post('/articles/:id/summarize', limitSummarization, async (req, res) => {
         if (!article) return res.status(404).json({ error: "Article not found" });
 
         if (article.summary) {
-            return res.json({ summary: article.summary });
+            return res.json({ summary: repairMojibake(article.summary) });
         }
 
         const summaryCallback = await summarizeArticle(article.content || article.title);
@@ -525,7 +526,7 @@ router.post('/articles/:id/summarize', limitSummarization, async (req, res) => {
             data: { summary: summaryCallback }
         });
 
-        res.json({ summary: updated.summary });
+        res.json({ summary: repairMojibake(updated.summary) });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -565,14 +566,13 @@ router.get('/bookmarks', async (req, res) => {
             orderBy: { date: 'desc' },
             include: { source: true }
         });
-        res.json(bookmarks);
+        res.json(repairMojibakeDeep(bookmarks));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
 const { generateCategoryBrief } = require('./services/ai');
-const { repairMojibakeDeep } = require('./services/encoding');
 
 // GET /daily-brief - Generate daily highlights
 router.get('/daily-brief', async (req, res) => {
