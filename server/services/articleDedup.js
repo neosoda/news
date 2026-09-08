@@ -51,6 +51,57 @@ function buildTitleSignature(title) {
     return uniqueSortedTokens.slice(0, 14).join(' ');
 }
 
+// Signature courte et stable, utilisée comme clé de dédup intra-source
+// (exact-match rapide). Pour les cas où l'originalTitle varie d'1-2 mots
+// (suffixe promo, "2024", "Pro"), cette signature peut diverger — c'est
+// pour ça qu'on combine avec un check Jaccard (voir findIntraSourceTitleDuplicates).
+const TITLE_SIGNATURE_TOKEN_COUNT = 6;
+
+function buildShortTitleSignature(title) {
+    const tokens = tokenizeForTitle(title);
+    if (tokens.length === 0) {
+        return '';
+    }
+
+    const uniqueSortedTokens = [...new Set(tokens)].sort();
+    return uniqueSortedTokens.slice(0, TITLE_SIGNATURE_TOKEN_COUNT).join(' ');
+}
+
+// Retourne la liste triée unique des tokens "forts" d'un titre (sans accents,
+// sans ponctuation, sans stopwords). Sert de représentation canonique pour
+// le calcul de Jaccard entre titres.
+function tokenizeTitleToSortedSet(title) {
+    const tokens = tokenizeForTitle(title);
+    if (tokens.length === 0) {
+        return [];
+    }
+    return [...new Set(tokens)].sort();
+}
+
+// Sérialise un set de tokens pour stockage/lookup. On stocke côté DB (colonne
+// titleTokens) pour éviter de re-tokenizer à chaque check.
+function serializeTitleTokenSet(tokens) {
+    return Array.isArray(tokens) ? tokens.join(' ') : '';
+}
+
+// Jaccard entre deux ensembles de tokens. Tolère les variations de 1-2 mots
+// (suffixe promo, ajout "2024", reformulation légère) tant que le sujet
+// reste identique.
+const TITLE_DEDUP_JACCARD_THRESHOLD = 0.7;
+
+function jaccardTitleSimilarity(tokensA, tokensB) {
+    if (!Array.isArray(tokensA) || !Array.isArray(tokensB)) return 0;
+    if (tokensA.length === 0 || tokensB.length === 0) return 0;
+    const setA = new Set(tokensA);
+    const setB = new Set(tokensB);
+    let intersection = 0;
+    for (const token of setA) {
+        if (setB.has(token)) intersection++;
+    }
+    const union = setA.size + setB.size - intersection;
+    return union === 0 ? 0 : intersection / union;
+}
+
 function hasStrongTitleSignature(title) {
     return tokenizeForTitle(title).length >= MIN_STRONG_TITLE_TOKENS;
 }
@@ -146,5 +197,11 @@ module.exports = {
     computeArticleFingerprint,
     computeArticleDedupKey,
     computeContentAwareArticleDedupKey,
-    computeLegacyArticleDedupKey
+    computeLegacyArticleDedupKey,
+    buildTitleSignature,
+    buildShortTitleSignature,
+    tokenizeTitleToSortedSet,
+    serializeTitleTokenSet,
+    jaccardTitleSimilarity,
+    TITLE_DEDUP_JACCARD_THRESHOLD
 };

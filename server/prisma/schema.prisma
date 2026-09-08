@@ -36,6 +36,8 @@ model Article {
   link          String   @unique
   fingerprint   String?  @unique
   dedupKey      String?  @unique
+  titleSignature String? // Signature normalisée du titre original (sans accents/ponctuation/stopwords, tokens triés uniques). Robuste aux republications avec légère variation de titre. Combinée à sourceId, elle ferme la faille de dédup pour les flux sans ID numérique dans l'URL (Les Numériques, Azure Blog, etc.).
+  titleTokens String? // Set trié unique des tokens "forts" du titre (espace-séparé). Sert d'index pour le préfiltre du check Jaccard intra-source (republications avec 1-2 mots ajoutés qui passent à côté du titleSignature exact-match).
   date          DateTime
   content       String?
   image         String?
@@ -52,6 +54,8 @@ model Article {
   @@index([category, date])
   @@index([isBookmarked, date])
   @@index([sourceId, date])
+  @@index([sourceId, titleSignature])
+  @@index([sourceId, titleTokens])
 }
 
 model DailyBrief {

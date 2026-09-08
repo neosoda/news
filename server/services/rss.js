@@ -14,7 +14,13 @@ const {
     computeArticleFingerprint,
     computeArticleDedupKey,
     computeContentAwareArticleDedupKey,
-    computeLegacyArticleDedupKey
+    computeLegacyArticleDedupKey,
+    buildTitleSignature,
+    buildShortTitleSignature,
+    tokenizeTitleToSortedSet,
+    serializeTitleTokenSet,
+    jaccardTitleSimilarity,
+    TITLE_DEDUP_JACCARD_THRESHOLD
 } = require('./articleDedup');
 const { validateOutboundHttpUrl, createPinnedLookup } = require('./urlSafety');
 const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./feedUrlCatalog');
@@ -457,6 +463,83 @@ function getDuplicateWinnerScore(article) {
     return score;
 }
 
+async function backfillArticleTitleSignatures({ batchSize = 200 } = {}) {
+    // Calcule titleSignature + titleTokens pour les articles existants qui
+    // n'en ont pas (créés avant le déploiement des champs). Idempotent :
+    // ne touche que les lignes dont les champs sont NULL. Laisse le
+    // cleanup périodique faire le merge ensuite.
+    const BATCH = Math.max(1, Math.min(Number(batchSize) || 200, 1000));
+    let cursor = 0;
+    let scanned = 0;
+    let updated = 0;
+
+    while (true) {
+        const rows = await prisma.article.findMany({
+            where: {
+                OR: [
+                    { titleSignature: null },
+                    { titleTokens: null }
+                ]
+            },
+            orderBy: { id: 'asc' },
+            select: { id: true, originalTitle: true },
+            take: BATCH,
+            skip: cursor
+        });
+        if (rows.length === 0) break;
+        scanned += rows.length;
+        cursor += rows.length;
+
+        for (const row of rows) {
+            const tokens = tokenizeTitleToSortedSet(row.originalTitle || '');
+            const signature = buildShortTitleSignature(row.originalTitle || '');
+            const tokensSerialized = serializeTitleTokenSet(tokens);
+
+            const data = {};
+            if (signature) {
+                data.titleSignature = signature;
+            } else {
+                // Titre vide ou entièrement stopwords : on stocke un
+                // placeholder pour ne pas re-scanner la ligne à chaque tick.
+                data.titleSignature = '__empty__';
+            }
+            if (tokensSerialized) {
+                data.titleTokens = tokensSerialized;
+            } else {
+                data.titleTokens = '__empty__';
+            }
+
+            try {
+                await prisma.article.update({
+                    where: { id: row.id },
+                    data
+                });
+                updated++;
+            } catch (error) {
+                if (error?.code === 'P2002') {
+                    // Collision unique sur titleSignature : on suffixe
+                    // pour ne pas perdre l'info (le cleanup merge ensuite).
+                    data.titleSignature = `${signature}#dup`;
+                    await prisma.article.update({
+                        where: { id: row.id },
+                        data
+                    });
+                    updated++;
+                    continue;
+                }
+                throw error;
+            }
+        }
+
+        if (rows.length < BATCH) break;
+    }
+
+    if (updated > 0) {
+        console.log(`[RSS] Backfilled titleSignature+titleTokens for ${updated}/${scanned} article(s).`);
+    }
+    return { scanned, updated };
+}
+
 async function collapseDuplicateArticlesBySourceNumericId() {
     const articles = await prisma.article.findMany({
         select: {
@@ -465,6 +548,8 @@ async function collapseDuplicateArticlesBySourceNumericId() {
             link: true,
             title: true,
             originalTitle: true,
+            titleSignature: true,
+            titleTokens: true,
             content: true,
             image: true,
             summary: true,
@@ -474,18 +559,49 @@ async function collapseDuplicateArticlesBySourceNumericId() {
         }
     });
 
+    // On regroupe les articles par clés intra-source :
+    //   - num:<id>      : flux avec ID numérique dans l'URL (ex. Bleeping Computer, The Hacker News)
+    //   - title:<sig>   : flux sans ID numérique (ex. Les Numériques, Azure Blog) — clé de secours
+    //   - link:<norm>   : dernier recours, quand ni l'ID ni la signature ne sont exploitables
+    // Plusieurs clés peuvent matcher le même article (par ex. une republication garde
+    // la même titleSignature mais change le suffixe de l'URL). On laisse chaque article
+    // appartenir à UN seul groupe prioritaire pour éviter de le supprimer plusieurs fois.
     const groups = new Map();
+    const membership = new Set();
+
     for (const article of articles) {
-        const numericId = extractArticleNumericIdFromLink(article.link);
-        if (!numericId) {
+        if (membership.has(article.id)) {
             continue;
         }
 
-        const key = `${article.sourceId}:${numericId}`;
-        if (!groups.has(key)) {
-            groups.set(key, []);
+        const numericId = extractArticleNumericIdFromLink(article.link);
+        if (numericId) {
+            const key = `${article.sourceId}:num:${numericId}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(article);
+            membership.add(article.id);
+            continue;
         }
-        groups.get(key).push(article);
+
+        if (article.titleSignature && article.titleSignature !== '__empty__') {
+            const key = `${article.sourceId}:title:${article.titleSignature}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(article);
+            membership.add(article.id);
+            continue;
+        }
+
+        // Filet de sécurité : si l'article n'a ni ID numérique ni signature
+        // (legacy, pre-deploy), on tente quand même un groupement par lien normalisé
+        // pour la même source. Sans cette clé, ces articles n'étaient jamais
+        // dédupliqués par le cleanup périodique.
+        const normalizedLink = normalizeUrl(article.link);
+        if (normalizedLink) {
+            const key = `${article.sourceId}:link:${normalizedLink}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(article);
+            membership.add(article.id);
+        }
     }
 
     let mergedGroups = 0;
@@ -502,46 +618,215 @@ async function collapseDuplicateArticlesBySourceNumericId() {
         const losers = sorted.slice(1);
 
         for (const loser of losers) {
-            const updateData = {};
-            if (loser.isBookmarked && !winner.isBookmarked) {
-                updateData.isBookmarked = true;
-                winner.isBookmarked = true;
-            }
-            if (!winner.summary && loser.summary) {
-                updateData.summary = loser.summary;
-                winner.summary = loser.summary;
-            }
-            if (!winner.image && loser.image) {
-                updateData.image = loser.image;
-                winner.image = loser.image;
-            }
-            if (!winner.content && loser.content) {
-                updateData.content = loser.content;
-                winner.content = loser.content;
-            }
-            if (!winner.originalTitle && loser.originalTitle) {
-                updateData.originalTitle = loser.originalTitle;
-                winner.originalTitle = loser.originalTitle;
-            }
-
-            if (Object.keys(updateData).length > 0) {
-                await prisma.article.update({
-                    where: { id: winner.id },
-                    data: updateData
-                });
-            }
-
-            await prisma.article.delete({
-                where: { id: loser.id }
-            });
-            removedArticles++;
+            removedArticles += await mergeArticlesKeepingWinner(winner, loser);
         }
     }
 
-    if (removedArticles > 0) {
+    // 2e passe : Jaccard intra-source pour les doublons qui n'ont pas
+    // matché la signature exacte (republications avec 1-2 mots ajoutés).
+    // On itère tant qu'on merge : un merge peut en débloquer d'autres.
+    let jaccardMerged = 0;
+    let jaccardPasses = 0;
+    const MAX_JACCARD_PASSES = 5;
+    while (jaccardPasses < MAX_JACCARD_PASSES) {
+        jaccardPasses++;
+        const currentArticles = await prisma.article.findMany({
+            select: {
+                id: true,
+                sourceId: true,
+                link: true,
+                title: true,
+                originalTitle: true,
+                titleSignature: true,
+                titleTokens: true,
+                content: true,
+                image: true,
+                summary: true,
+                isBookmarked: true,
+                date: true,
+                createdAt: true
+            }
+        });
+
+        const passMerged = await collapseTitleSimilarDuplicatesWithinSource(currentArticles);
+        if (passMerged === 0) break;
+        jaccardMerged += passMerged;
+    }
+
+    if (removedArticles > 0 || jaccardMerged > 0) {
         console.log(
-            `[RSS] Collapsed duplicate articles by source numeric id. groups=${mergedGroups} removed=${removedArticles}`
+            `[RSS] Collapsed duplicate articles. signatureGroups=${mergedGroups} signatureRemoved=${removedArticles} jaccardRemoved=${jaccardMerged}`
         );
+    }
+
+    return { signatureGroups: mergedGroups, signatureRemoved: removedArticles, jaccardRemoved: jaccardMerged };
+}
+
+// 2e passe de cleanup : pour chaque source, cherche des paires d'articles
+// non encore mergés dont le titre a un Jaccard >= seuil. Fusionne en gardant
+// le meilleur score. Renvoie le nombre d'articles supprimés.
+async function collapseTitleSimilarDuplicatesWithinSource(articles) {
+    if (!Array.isArray(articles) || articles.length === 0) return 0;
+
+    // Grouper par source
+    const bySource = new Map();
+    for (const article of articles) {
+        if (!bySource.has(article.sourceId)) bySource.set(article.sourceId, []);
+        bySource.get(article.sourceId).push(article);
+    }
+
+    let removedTotal = 0;
+
+    for (const sourceArticles of bySource.values()) {
+        if (sourceArticles.length < 2) continue;
+
+        // Index par token : pour chaque token, la liste des articles qui le contiennent.
+        // Permet de ne comparer un article qu'à ceux qui partagent au moins 1 token.
+        const tokenIndex = new Map();
+        for (const article of sourceArticles) {
+            const tokens = (article.titleTokens || '').trim()
+                ? article.titleTokens.split(' ').filter(Boolean)
+                : tokenizeTitleToSortedSet(article.originalTitle || '');
+            for (const token of tokens) {
+                if (!tokenIndex.has(token)) tokenIndex.set(token, new Set());
+                tokenIndex.get(token).add(article.id);
+            }
+        }
+
+        // Union-find pour chaîner les clusters de doublons (A~B, B~C → {A,B,C})
+        const parent = new Map();
+        const find = (x) => {
+            let r = x;
+            while (parent.get(r) !== r) {
+                parent.set(r, parent.get(parent.get(r)));
+                r = parent.get(r);
+            }
+            return r;
+        };
+        const union = (x, y) => {
+            const rx = find(x), ry = find(y);
+            if (rx !== ry) parent.set(rx, ry);
+        };
+        for (const article of sourceArticles) parent.set(article.id, article.id);
+
+        const articleById = new Map(sourceArticles.map((a) => [a.id, a]));
+        const seenPairs = new Set();
+
+        for (const article of sourceArticles) {
+            const articleTokens = (article.titleTokens || '').trim()
+                ? article.titleTokens.split(' ').filter(Boolean)
+                : tokenizeTitleToSortedSet(article.originalTitle || '');
+            if (articleTokens.length === 0) continue;
+
+            // Candidats = union des articles qui partagent au moins 1 token
+            const candidateIds = new Set();
+            for (const token of articleTokens) {
+                const bucket = tokenIndex.get(token);
+                if (bucket) for (const id of bucket) candidateIds.add(id);
+            }
+
+            for (const candidateId of candidateIds) {
+                if (candidateId === article.id) continue;
+                const pairKey = article.id < candidateId
+                    ? `${article.id}:${candidateId}`
+                    : `${candidateId}:${article.id}`;
+                if (seenPairs.has(pairKey)) continue;
+                seenPairs.add(pairKey);
+
+                const candidate = articleById.get(candidateId);
+                if (!candidate) continue;
+
+                const candidateTokens = (candidate.titleTokens || '').trim()
+                    ? candidate.titleTokens.split(' ').filter(Boolean)
+                    : tokenizeTitleToSortedSet(candidate.originalTitle || '');
+
+                if (candidateTokens.length === 0) continue;
+
+                const score = jaccardTitleSimilarity(articleTokens, candidateTokens);
+                if (score >= TITLE_DEDUP_JACCARD_THRESHOLD) {
+                    union(article.id, candidate.id);
+                }
+            }
+        }
+
+        // Construire les clusters
+        const clusters = new Map();
+        for (const article of sourceArticles) {
+            const root = find(article.id);
+            if (!clusters.has(root)) clusters.set(root, []);
+            clusters.get(root).push(article);
+        }
+
+        // Merger chaque cluster
+        for (const cluster of clusters.values()) {
+            if (cluster.length < 2) continue;
+            const sorted = [...cluster].sort((a, b) => getDuplicateWinnerScore(b) - getDuplicateWinnerScore(a));
+            const winner = { ...sorted[0] };
+            const losers = sorted.slice(1);
+            for (const loser of losers) {
+                removedTotal += await mergeArticlesKeepingWinner(winner, loser);
+            }
+        }
+    }
+
+    return removedTotal;
+}
+
+// Fusionne deux articles en gardant winner comme survivant, en reportant
+// sur lui les champs manquants du perdant. Renvoie 1 si un article a été
+// supprimé, 0 sinon (idempotent).
+async function mergeArticlesKeepingWinner(winner, loser) {
+    const updateData = {};
+    if (loser.isBookmarked && !winner.isBookmarked) {
+        updateData.isBookmarked = true;
+        winner.isBookmarked = true;
+    }
+    if (!winner.summary && loser.summary) {
+        updateData.summary = loser.summary;
+        winner.summary = loser.summary;
+    }
+    if (!winner.image && loser.image) {
+        updateData.image = loser.image;
+        winner.image = loser.image;
+    }
+    if (!winner.content && loser.content) {
+        updateData.content = loser.content;
+        winner.content = loser.content;
+    }
+    if (!winner.originalTitle && loser.originalTitle) {
+        updateData.originalTitle = loser.originalTitle;
+        winner.originalTitle = loser.originalTitle;
+    }
+    if ((!winner.titleSignature || winner.titleSignature === '__empty__') && loser.titleSignature) {
+        updateData.titleSignature = loser.titleSignature;
+        winner.titleSignature = loser.titleSignature;
+    }
+    if ((!winner.titleTokens || winner.titleTokens === '__empty__') && loser.titleTokens) {
+        updateData.titleTokens = loser.titleTokens;
+        winner.titleTokens = loser.titleTokens;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+        try {
+            await prisma.article.update({
+                where: { id: winner.id },
+                data: updateData
+            });
+        } catch (error) {
+            // Si le winner a été supprimé entre-temps (race condition), on abandonne.
+            if (error?.code === 'P2025') return 0;
+            throw error;
+        }
+    }
+
+    try {
+        await prisma.article.delete({
+            where: { id: loser.id }
+        });
+        return 1;
+    } catch (error) {
+        if (error?.code === 'P2025') return 0; // déjà supprimé par une autre passe
+        throw error;
     }
 }
 
@@ -1030,6 +1315,91 @@ function sanitizeUrlArtifacts(rawUrl) {
         .replace(/%C2%A0/gi, ' ');
 }
 
+// Cherche un article déjà inséré dans la même source dont le titre est un
+// quasi-doublon (Jaccard sur les tokens forts) du titre `newTokens`. Couvre
+// les republications où l'originalTitle varie d'1-2 mots (suffixe promo, ajout
+// d'année, reformulation) et qui passent à côté du titleSignature exact-match.
+//
+// On borne la requête SQL avec un préfiltre sur le premier token (intersection
+// non vide) pour ne pas charger inutilement tous les articles de la source.
+// Les faux positifs du préfiltre sont écartés par le calcul Jaccard en JS.
+async function findIntraSourceTitleDuplicate({ sourceId, newTokens, normalizedLink }) {
+    if (!Array.isArray(newTokens) || newTokens.length === 0) return null;
+    if (!sourceId) return null;
+
+    const firstToken = newTokens[0];
+    const candidateLimit = 25;
+
+    let candidates;
+    try {
+        candidates = await prisma.article.findMany({
+            where: {
+                sourceId,
+                link: { not: normalizedLink },
+                titleTokens: { contains: firstToken }
+            },
+            orderBy: { date: 'desc' },
+            take: candidateLimit,
+            select: {
+                id: true,
+                link: true,
+                title: true,
+                originalTitle: true,
+                titleTokens: true,
+                content: true,
+                image: true,
+                summary: true,
+                isBookmarked: true,
+                date: true,
+                createdAt: true
+            }
+        });
+    } catch (error) {
+        // Si la colonne titleTokens n'existe pas encore (premier déploiement),
+        // on retombe sur un scan par originalTitle pour rester robuste.
+        if (error?.code === 'P2021' || /no such column/i.test(error?.message || '')) {
+            candidates = await prisma.article.findMany({
+                where: { sourceId, link: { not: normalizedLink } },
+                orderBy: { date: 'desc' },
+                take: candidateLimit,
+                select: {
+                    id: true,
+                    link: true,
+                    title: true,
+                    originalTitle: true,
+                    titleTokens: true,
+                    content: true,
+                    image: true,
+                    summary: true,
+                    isBookmarked: true,
+                    date: true,
+                    createdAt: true
+                }
+            });
+        } else {
+            throw error;
+        }
+    }
+
+    let bestMatch = null;
+    let bestScore = 0;
+    for (const candidate of candidates) {
+        const candidateTokens = (candidate.titleTokens || '').trim()
+            ? candidate.titleTokens.split(' ').filter(Boolean)
+            : tokenizeTitleToSortedSet(candidate.originalTitle || '');
+
+        if (candidateTokens.length === 0) continue;
+
+        const score = jaccardTitleSimilarity(newTokens, candidateTokens);
+        if (score >= TITLE_DEDUP_JACCARD_THRESHOLD && score > bestScore) {
+            bestScore = score;
+            bestMatch = candidate;
+        }
+    }
+
+    return bestMatch;
+}
+
 function extractArticleNumericIdFromLink(link) {
     if (typeof link !== 'string' || !link.trim()) {
         return null;
@@ -1184,6 +1554,13 @@ async function fetchAndProcessFeed(source) {
                 content: item.content
             });
 
+            // Signature normalisée du titre (bag-of-tokens, court et stable).
+            // Utilisée comme clé de dédup intra-source : ferme la faille pour les
+            // flux sans ID numérique (Les Numériques, Azure Blog, etc.) où le
+            // contenu et l'URL peuvent varier entre republications mais le sujet
+            // reste identique.
+            const articleTitleSignature = buildShortTitleSignature(item.title);
+
             // Check for existing article by normalized/original link and by semantic key.
             const duplicateCriteria = [
                 { link: normalizedLink },
@@ -1216,7 +1593,41 @@ async function fetchAndProcessFeed(source) {
                 });
             }
 
-            const existing = await prisma.article.findFirst({
+            // Dédup intra-source par signature de titre (anti-republication).
+            // Une republication qui change légèrement le titre (suffixe, ponctuation,
+            // ajout d'un mot promo) ne fait pas varier cette signature tant que le
+            // sujet reste le même. Combiné à sourceId, on évite les faux positifs
+            // entre deux flux qui traitent la même dépêche de façon indépendante.
+            if (articleTitleSignature) {
+                duplicateCriteria.push({
+                    AND: [
+                        { sourceId: effectiveSource.id },
+                        { titleSignature: articleTitleSignature }
+                    ]
+                });
+            }
+
+            // Tokens du titre pour le check Jaccard (sert de préfiltre en DB).
+            const articleTitleTokens = tokenizeTitleToSortedSet(item.title);
+            const articleTitleTokensSerialized = serializeTitleTokenSet(articleTitleTokens);
+
+            // Dédup intra-source fuzzy par Jaccard sur les tokens du titre.
+            // Tolère les variations de 1-2 mots (suffixe promo, ajout "2024",
+            // reformulation) qui passent à côté de la signature exacte. Coût :
+            // un SELECT sur les articles récents de la même source + calcul
+            // Jaccard en JS. Pour ~19 articles par source c'est négligeable.
+            const jaccardDuplicate = articleTitleTokens.length > 0
+                ? await findIntraSourceTitleDuplicate({
+                    sourceId: effectiveSource.id,
+                    newTokens: articleTitleTokens,
+                    normalizedLink
+                })
+                : null;
+
+            const existing = (jaccardDuplicate
+                ? { ...jaccardDuplicate, _matchedByJaccard: true }
+                : null
+            ) || await prisma.article.findFirst({
                 where: {
                     OR: duplicateCriteria
                 }
@@ -1296,6 +1707,8 @@ async function fetchAndProcessFeed(source) {
                             link: normalizedLink,    // URL normalisée
                             fingerprint: articleFingerprint,
                             dedupKey: articleDedupKey,
+                            titleSignature: articleTitleSignature || null,
+                            titleTokens: articleTitleTokensSerialized || null,
                             date: articleDate,
                             content: contentFr,
                             sourceId: effectiveSource.id,
@@ -1368,6 +1781,15 @@ async function updateAllFeeds() {
             await clampFutureArticleDates();
             await applyKnownSourceCorrections();
             await backfillMissingArticleImagesFromSources();
+            // Backfill titleSignature AVANT le collapse : le nouveau regroupement
+            // par (sourceId, titleSignature) n'a aucun effet tant que les articles
+            // legacy n'ont pas de signature. Coût : un SELECT/UPDATE sur les lignes
+            // avec titleSignature = NULL ; idempotent.
+            try {
+                await backfillArticleTitleSignatures();
+            } catch (backfillError) {
+                console.error(`[RSS] Title signature backfill failed: ${backfillError.message}`);
+            }
             await collapseDuplicateArticlesBySourceNumericId();
 
             // Self-heal any mojibake that slipped into the database before the
@@ -1446,6 +1868,7 @@ module.exports = {
     cleanupOldArticles,
     applyKnownSourceCorrections,
     backfillMissingArticleImagesFromSources,
+    backfillArticleTitleSignatures,
     collapseDuplicateArticlesBySourceNumericId,
     repairAllArticlesEncoding,
     repairArticleFieldsInPlace,
