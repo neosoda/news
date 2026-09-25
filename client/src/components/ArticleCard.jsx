@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { ExternalLink, Bot, Sparkles, Bookmark } from 'lucide-react';
+import { ExternalLink, Bot, Sparkles, Bookmark, Newspaper } from 'lucide-react';
 import { summarizeArticle, toggleBookmark } from '../services/api';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -66,6 +66,49 @@ function normalizeCategory(category) {
     return matchedCategory || 'Autre';
 }
 
+function ArticleArtwork({ article, category }) {
+    const imageCandidates = [article.image, article.source?.image]
+        .filter((image, index, images) => typeof image === 'string' && image.trim() && images.indexOf(image) === index);
+    const [candidateIndex, setCandidateIndex] = useState(0);
+    const image = imageCandidates[candidateIndex];
+    const sourceName = article.source?.name?.trim() || 'Veille tech';
+    const sourceInitials = sourceName
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((word) => word[0])
+        .join('')
+        .toUpperCase();
+
+    return (
+        <div className="relative h-44 overflow-hidden border-b theme-border bg-slate-950" data-article-artwork>
+            <div
+                className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_22%_18%,rgba(34,211,238,0.24),transparent_34%),radial-gradient(circle_at_82%_78%,rgba(245,158,11,0.18),transparent_32%),linear-gradient(135deg,#101827,#06090f)]"
+                aria-hidden="true"
+            >
+                <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(148,163,184,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.16)_1px,transparent_1px)] [background-size:24px_24px]" />
+                <div className="relative flex items-center gap-3 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-cyan-100 shadow-2xl backdrop-blur-sm">
+                    <Newspaper size={24} strokeWidth={1.7} />
+                    <div>
+                        <span className="block text-lg font-black tracking-[0.12em]">{sourceInitials || 'NEWS'}</span>
+                        <span className="block max-w-36 truncate text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">{category}</span>
+                    </div>
+                </div>
+            </div>
+
+            {image && (
+                <img
+                    key={image}
+                    src={image}
+                    alt={`Illustration de l’article : ${article.title}`}
+                    className={`absolute inset-0 h-full w-full transition-transform duration-500 group-hover:scale-105 ${candidateIndex === 0 ? 'object-cover opacity-[0.88] saturate-[0.92]' : 'object-contain bg-[var(--color-surface-raised)] p-8'}`}
+                    onError={() => setCandidateIndex((current) => current + 1)}
+                />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-surface-raised)] via-transparent to-black/20" />
+        </div>
+    );
+}
+
 export default function ArticleCard({ article }) {
     const queryClient = useQueryClient();
     const [summary, setSummary] = useState(article.summary);
@@ -110,16 +153,7 @@ export default function ArticleCard({ article }) {
         >
             <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/25 to-transparent" />
 
-            {article.image && (
-                <div className="relative h-44 overflow-hidden border-b theme-border">
-                    <img
-                        src={article.image}
-                        alt={article.title}
-                        className="w-full h-full object-cover opacity-[0.88] saturate-[0.92] transition-transform duration-500 group-hover:scale-105"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-surface-raised)] via-transparent to-black/20" />
-                </div>
-            )}
+            <ArticleArtwork article={article} category={resolvedCategory} />
 
             <div className="absolute top-3 left-3 z-10 flex max-w-[calc(100%-4rem)] flex-wrap gap-2">
                 <span className={`px-2.5 py-1 rounded-full text-[11px] font-black border backdrop-blur-md ${categoryStyle}`}>
