@@ -205,6 +205,32 @@
   .theme-overlay {
     background: var(--color-overlay);
   }
+
+  .brief-link {
+    color: var(--brand-primary);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--brand-primary) 40%, transparent);
+    text-underline-offset: 3px;
+  }
+
+  .brief-cite {
+    @apply inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border px-1 font-mono text-[0.7rem] tabular-nums transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40;
+    border-color: var(--color-border);
+    color: var(--color-text-soft);
+  }
+
+  .brief-cite:hover {
+    border-color: var(--color-border-strong);
+    color: var(--brand-primary);
+  }
+
+  .brief-source {
+    @apply -mx-2 grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 rounded-lg px-2 py-2.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40;
+  }
+
+  .brief-source:hover {
+    background: var(--color-surface-muted);
+  }
 }
 
 .scrollbar-hide::-webkit-scrollbar {

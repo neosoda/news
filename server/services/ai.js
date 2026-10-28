@@ -254,28 +254,47 @@ async function categorizeArticle(title, content) {
     }
 }
 
+// Articles sent to the model, numbered [1]..[N]; the route exposes the same
+// slice as `topArticles` so the [n] citations map to the right links.
+const BRIEF_SOURCE_LIMIT = 10;
+
+function briefSnippet(content) {
+    if (!content) return '';
+    return content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 160);
+}
+
 async function generateCategoryBrief(category, articles) {
     if (articles.length === 0) return "Aucune actualité majeure dans cette catégorie aujourd'hui.";
 
     const inputContent = articles
-        .slice(0, 15)
-        .map(a => `- ${a.title}: ${a.content ? a.content.substring(0, 100).replace(/\n/g, ' ') : ''}...`)
+        .slice(0, BRIEF_SOURCE_LIMIT)
+        .map((a, i) => {
+            const snippet = briefSnippet(a.content);
+            const source = a.source?.name ? ` (${a.source.name})` : '';
+            return `[${i + 1}] ${a.title}${source}${snippet ? ` — ${snippet}` : ''}`;
+        })
         .join('\n');
 
     try {
         const raw = await generateResponse(
-            `Voici les dernières actualités pour la catégorie ${category}:\n\n${inputContent}`,
+            `Rubrique : ${category}\nArticles :\n${inputContent}`,
             {
-                systemPrompt: `Tu es un journaliste expert tech. Rédige un "Brief Quotidien" pour la catégorie "${category}".
-Objectifs:
-1. Synthétise les actualités fournies en un résumé fluide et structuré de 5 à 7 lignes maximum.
-2. Adopte un ton neutre, factuel et professionnel ("presse tech premium").
-3. Mets en avant les faits marquants et leurs impacts.
-4. Évite les répétitions et ignore les sujets trop mineurs ou sensationnalistes.
-5. Si aucune tendance claire ne se dégage, résume simplement les 2-3 infos les plus importantes.
-IMPORTANT: Ne base ton résumé QUE sur les titres fournis. N'invente rien.`,
-                temperature: 0.4,
-                maxTokens: 500,
+                systemPrompt: `Tu es rédacteur en chef d'un média tech francophone. Rédige la synthèse du jour de la rubrique à partir des articles numérotés.
+
+Format Markdown strict :
+# Titre éditorial informatif (8 mots max, sans le nom de la rubrique ni le mot « brief »)
+Chapô : une ou deux phrases qui donnent l'essentiel.
+
+## Titre court de l'actualité (6 mots max)
+Deux ou trois phrases factuelles : quoi, qui, pourquoi c'est important. Termine par les numéros des articles utilisés, ex. [2][5].
+
+Règles :
+- 1 à 5 actualités selon la matière disponible, la plus importante d'abord. Regroupe les articles qui traitent du même sujet.
+- Mets en **gras** 2 ou 3 éléments clés par actualité : entreprises, produits, chiffres.
+- Français naturel, ton neutre de presse. Pas d'introduction, de conclusion ni de formule générique.
+- Utilise uniquement les informations fournies : aucun chiffre, nom ou date inventé. Ne cite que les articles qui appuient réellement le paragraphe.`,
+                temperature: 0.3,
+                maxTokens: 700,
                 timeoutMs: 25000
             }
         );
@@ -286,4 +305,4 @@ IMPORTANT: Ne base ton résumé QUE sur les titres fournis. N'invente rien.`,
     }
 }
 
-module.exports = { summarizeArticle, translateText, categorizeArticle, generateCategoryBrief, normalizeCategory, categorizeArticleLocally };
+module.exports = { summarizeArticle, translateText, categorizeArticle, generateCategoryBrief, BRIEF_SOURCE_LIMIT, normalizeCategory, categorizeArticleLocally };

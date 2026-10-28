@@ -572,7 +572,7 @@ router.get('/bookmarks', async (req, res) => {
     }
 });
 
-const { generateCategoryBrief } = require('./services/ai');
+const { generateCategoryBrief, BRIEF_SOURCE_LIMIT } = require('./services/ai');
 
 // GET /daily-brief - Generate daily highlights
 router.get('/daily-brief', async (req, res) => {
@@ -650,7 +650,14 @@ router.get('/daily-brief', async (req, res) => {
                 summary: summary,
                 articleCount: catArticles.length,
                 heroImage: heroImage,
-                topArticles: catArticles.slice(0, 5) // Send top 5 metadata/links for context
+                // Same order as the numbered list given to the model: [n] -> topArticles[n - 1]
+                topArticles: catArticles.slice(0, BRIEF_SOURCE_LIMIT).map(a => ({
+                    id: a.id,
+                    title: a.title,
+                    link: a.link,
+                    date: a.date,
+                    source: a.source ? { name: a.source.name } : null
+                }))
             });
         }
 
