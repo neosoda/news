@@ -117,7 +117,7 @@ GROQ_API_KEY=
 MISTRAL_API_KEY=
 OPENROUTER_API_KEY=
 
-# Instance de traduction par défaut (personnalisable)
+# Traduction en développement local ; voir note Docker ci-dessous
 TRANSLATION_URL=https://translate.techsentinel.fr/translate
 ```
 
@@ -127,7 +127,7 @@ Pour générer un bon jeton :
 openssl rand -base64 48
 ```
 
-> **Sécurité :** ne publiez jamais votre `.env` ni vos clés API. Le point de traduction par défaut est un service externe au conteneur ; vous pouvez le remplacer par votre propre instance LibreTranslate.
+> **Sécurité :** ne publiez jamais votre `.env` ni vos clés API. Le traducteur par défaut est externe au conteneur. Pour utiliser votre propre LibreTranslate avec Docker Compose, modifiez aussi `TRANSLATION_URL` dans `docker-compose.yml`, où l'URL est actuellement fixée.
 
 ### 3. Lancer l'application
 
