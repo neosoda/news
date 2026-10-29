@@ -1,156 +1,265 @@
+<div align="center">
 
-# Agrégateur de News Tech & IA 🤖📰
+<img src="docs/assets/newsai-hero.svg" alt="NewsAI — L’essentiel de la tech, sans le bruit. Bannière éditoriale conceptuelle." width="100%" />
 
-Une application web complète de veille technologique automatisée, conçue avec une architecture **"Thick Backend, Thin Frontend"**. Elle agrège des flux RSS, utilise l'IA pour les résumer, et présente le tout via une interface moderne.
+<br />
 
-## 🚀 Fonctionnalités
+### Votre centre de veille technologique, augmenté par l'IA.
 
-- **Veille Automatisée** : Récupération automatique des flux RSS toutes les 15 minutes et dès le démarrage.
-- **Fuites de données** : Une rubrique dédiée agrège Bonjour la fuite, Fuites Infos et FrenchBreaches, avec source, date et contexte pour chaque alerte.
-- **Traduction Gratuite** : [LibreTranslate](https://translate.techsentinel.fr) (auto-hébergé) assure la traduction EN→FR sans quota.
-- **IA en Cascade** : Résumé, catégorisation et fallback de traduction via **Groq** (prioritaire), puis **Mistral**, puis **OpenRouter** (modèles gratuits).
-- **Fallback Robuste** : Si LibreTranslate est indisponible, la traduction bascule automatiquement sur le LLM en cascade (Groq → Mistral → OpenRouter).
-- **Zéro Doublon** : Déduplication robuste basée sur URL normalisée + empreinte de contenu (hash SHA-256).
-- **Interface Premium** : Dashboard réactif et moderne (React + Tailwind) avec horodatage détaillé.
-- **Déploiement Automatisé** : Initialisation complète de la base de données et des 72 sources tech/sécurité/IA au lancement, dont le blog Ollama (Compatible Coolify).
-- **Administration protégée** : Gestion des sources protégée par un jeton serveur, CORS restrictif, limitation de débit et validation SSRF des URL.
+**Une seule interface pour suivre la tech, comprendre les tendances et garder une longueur d'avance.**
 
-## 🤖 Architecture IA : Cascade de Fallback
+Agrégation RSS · Briefs IA · Cybersécurité · Vidéos · Fuites de données
 
-Chaque appel à un LLM suit une cascade stricte pour maximiser la disponibilité :
+<br />
 
+[![Node.js](https://img.shields.io/badge/Node.js-20-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-19-087EA4?style=for-the-badge&logo=react&logoColor=white)](https://react.dev/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](#-déploiement-avec-docker)
+[![Self-hosted](https://img.shields.io/badge/Self--hosted-Yes-27c4c9?style=for-the-badge)](#-déploiement-avec-docker)
+[![Last commit](https://img.shields.io/github/last-commit/neosoda/news?style=for-the-badge&label=Dernier%20commit&color=818cf8)](https://github.com/neosoda/news/commits/main)
+
+<br />
+
+[**Découvrir les fonctionnalités**](#-une-veille-qui-va-à-lessentiel) · [**Installer avec Docker**](#-déploiement-avec-docker) · [**Comprendre l'architecture**](#-architecture) · [**Explorer l'API**](#-api-rest)
+
+<sub>Projet développé par <a href="https://github.com/neosoda">neosoda</a> · React + Express + Prisma · Déployable sur Docker et Coolify</sub>
+
+</div>
+
+---
+
+## ✨ Une veille qui va à l'essentiel
+
+L'information technologique est partout. Le temps pour la lire, beaucoup moins.
+
+**NewsAI** centralise des sources d'actualité tech, IA, cloud, développement et cybersécurité. Le moteur collecte les flux RSS, déduplique les articles, les traduit si nécessaire et permet de produire des synthèses assistées par IA.
+
+L'objectif : **passer moins de temps à chercher l'information et plus de temps à la comprendre.**
+
+| | Espace | Ce que vous y trouvez |
+|:---:|---|---|
+| 📰 | **Actualités** | Flux RSS consolidé, classement, recherche, catégories, statistiques et défilement continu. |
+| ⚡ | **Brief IA quotidien** | Synthèses structurées par thème, avec points clés et renvois vers les articles sources. |
+| 🛡️ | **Fuites de données** | Espace dédié aux alertes publiées par Bonjour la fuite, Fuites Infos et FrenchBreaches. |
+| 🎬 | **Vidéos** | Veille IA, IT, tech et développement depuis des chaînes YouTube via leurs flux. |
+| 🔖 | **Favoris** | Mise de côté des articles à retrouver plus tard. |
+| 📡 | **Sources RSS** | Ajout et suppression de sources, état de santé des flux, relance et réactivation, sous accès administrateur. |
+
+<sub>Interface responsive avec thème clair/sombre ; les fonctions IA nécessitent au moins une clé de fournisseur configurée.</sub>
+
+## 🧠 Une intelligence artificielle avec des solutions de repli
+
+NewsAI utilise plusieurs fournisseurs pour éviter de dépendre d'un seul moteur.
+
+```mermaid
+flowchart TB
+    RSS["Flux RSS et articles"] --> PROCESS["Collecte, déduplication et catégorisation"]
+    PROCESS --> TRANSLATE["Traduction vers le français"]
+    PROCESS --> BRIEF["Résumés et briefs IA"]
+    TRANSLATE --> LIBRE["LibreTranslate"]
+    LIBRE -->|"Service indisponible"| LLM["Cascade LLM"]
+    BRIEF --> LLM
+    LLM --> GROQ["Groq"]
+    GROQ -->|"Erreur ou quota"| MISTRAL["Mistral"]
+    MISTRAL -->|"Échec"| OPEN["OpenRouter — modèles de repli"]
+    style RSS fill:#102a42,stroke:#67dbe5,color:#fff
+    style PROCESS fill:#102a42,stroke:#67dbe5,color:#fff
+    style LLM fill:#25315a,stroke:#9c9cf9,color:#fff
+    style GROQ fill:#173f4c,stroke:#67dbe5,color:#fff
+    style MISTRAL fill:#25315a,stroke:#9c9cf9,color:#fff
+    style OPEN fill:#25315a,stroke:#9c9cf9,color:#fff
 ```
-[Traduction]                [Résumé / Catégorisation / Brief]
-     │                                    │
-LibreTranslate (auto-hébergé)         Groq (llama-3.1-8b-instant)
-     │ si indisponible                    │ si erreur/timeout/rate-limit
-     ▼                                    ▼
-LLM Cascade →                         Mistral (mistral-small-latest)
-  1. Groq (llama-3.1-8b-instant)         │ si erreur
-  2. Mistral (mistral-small-latest)      ▼
-  3. OpenRouter (modèles gratuits)   OpenRouter (cascade modèles :free)
-```
 
-Les modèles OpenRouter utilisés en cascade (du plus capable au plus léger) :
+**Ordre de priorité :** Groq → Mistral → OpenRouter. Les modèles gratuits OpenRouter sont utilisés en cascade lorsque ce fournisseur est configuré. Pour les traductions, **LibreTranslate** est essayé avant le repli sur LLM.
 
-- `mistralai/mistral-small-3.1-24b-instruct:free`
-- `google/gemma-3-12b-it:free`
-- `qwen/qwen3-4b:free`
-- `google/gemma-3-4b-it:free`
-- `meta-llama/llama-3.2-3b-instruct:free`
-- `google/gemma-3n-e4b-it:free`
+Cette stratégie améliore la résilience, **sans garantir** la disponibilité, la gratuité ni l'exactitude des réponses des services tiers.
 
-## 🛠 Stack Technique
+## 🔍 Ce qui se passe en coulisses
 
-### Backend (Le Cerveau)
+<details>
+<summary><strong>Voir les détails du moteur de veille</strong></summary>
 
-- **Node.js & Express** : API REST performante.
-- **Prisma ORM** : Gestion de base de données (PostgreSQL/SQLite).
-- **RSS Parser & Node-Cron** : Moteur d'agrégation et planification.
-- **LibreTranslate** : Instance auto-hébergée sur `translate.techsentinel.fr`.
-- **Groq API** : LLM ultra-rapide (prioritaire, gratuit avec clé API).
-- **Mistral API** : LLM de fallback (niveau 2).
-- **OpenRouter API** : Orchestration multi-modèles gratuits (niveau 3 / fallback final).
+<br />
 
-### Frontend (L'Interface)
+- **Collecte planifiée** : récupération des flux au démarrage, puis toutes les **15 minutes** tant que le serveur fonctionne.
+- **Catalogue initial** : sources technologiques et sécurité préconfigurées ; initialisation idempotente sans effacer les articles existants.
+- **Déduplication** : normalisation des URL, empreintes de contenu SHA-256 et rapprochement de titres pour limiter les republications.
+- **Traitement de contenu** : récupération d'images lorsqu'elle est possible, correction de problèmes d'encodage et traduction en français.
+- **Résilience des sources** : suivi des échecs, périodes de pause, désactivation après échecs répétés et possibilité de réactivation.
+- **Contrôle éditorial** : les fuites de données restent dans leur rubrique dédiée plutôt que d'encombrer le fil principal.
 
-- **React (Vite)** : Single Page Application (SPA).
-- **TailwindCSS** : Design system utilitaire.
-- **React Query** : Gestion d'état serveur et cache.
-- **Lucide React** : Iconographie moderne.
+</details>
 
-## 📦 Installation & Démarrage
+## 🚀 Déploiement avec Docker
 
-### Prérequis
+Le moyen le plus simple pour lancer NewsAI, y compris depuis un environnement **Coolify**.
 
-- Node.js (v18+)
-- Docker & Docker Compose (optionnel, pour la prod)
-- Une clé API **Groq** (gratuite sur [console.groq.com](https://console.groq.com)) ← **recommandée**
-- Une clé API Mistral (optionnel, fallback niveau 2)
-- Une clé API OpenRouter (optionnel, fallback final)
+**Prérequis :** Docker avec Compose, un jeton d'administration robuste et **au moins une clé API LLM** pour les fonctionnalités IA (Groq, Mistral ou OpenRouter).
 
-> **Note :** Au moins une des trois clés est requise. La priorité est **Groq > Mistral > OpenRouter**.
-
-### 1. Développement Local
-
-**Backend :**
+### 1. Récupérer le dépôt
 
 ```bash
-cd server
-cp .env.example .env   # puis remplissez les clés API
-npm install
+git clone https://github.com/neosoda/news.git
+cd news
+cp server/.env.example .env
+```
+
+### 2. Configurer `.env`
+
+Définissez un jeton `ADMIN_TOKEN` aléatoire d'au moins **32 caractères** et au moins une clé LLM :
+
+```dotenv
+# Obligatoire pour l'administration des sources
+ADMIN_TOKEN=remplacer_par_un_jeton_aleatoire_de_32_caracteres_minimum
+
+# Au moins une clé pour les fonctions IA
+GROQ_API_KEY=
+MISTRAL_API_KEY=
+OPENROUTER_API_KEY=
+
+# Instance de traduction par défaut (personnalisable)
+TRANSLATION_URL=https://translate.techsentinel.fr/translate
+```
+
+Pour générer un bon jeton :
+
+```bash
+openssl rand -base64 48
+```
+
+> **Sécurité :** ne publiez jamais votre `.env` ni vos clés API. Le point de traduction par défaut est un service externe au conteneur ; vous pouvez le remplacer par votre propre instance LibreTranslate.
+
+### 3. Lancer l'application
+
+```bash
+docker compose up -d --build
+```
+
+Ouvrez **http://localhost:8080**.
+
+Le conteneur initialise Prisma/SQLite et charge les sources par défaut au démarrage. Le volume nommé `news-data` conserve la base SQLite lors de la recréation du conteneur.
+
+**Pour Coolify :** importez le dépôt Git, utilisez le déploiement Docker Compose, configurez les variables d'environnement dans Coolify et exposez le service sur le port interne `3000`.
+
+## 💻 Développement local
+
+<details>
+<summary><strong>Installation Node.js sans Docker</strong></summary>
+
+<br />
+
+Prévoir **Node.js 20+**, npm et un accès réseau vers les fournisseurs configurés.
+
+Dans un premier terminal :
+
+```bash
+git clone https://github.com/neosoda/news.git
+cd news/server
+cp .env.example .env
+# Renseignez ADMIN_TOKEN et au moins une clé LLM dans .env
+npm ci
+npx prisma generate
 npx prisma db push
 npx prisma db seed
 npm run dev
 ```
 
-Exemple de `.env` :
-
-```env
-# LLM - au moins une clé requise (ordre de priorité : Groq > Mistral > OpenRouter)
-GROQ_API_KEY=votre_cle_groq
-MISTRAL_API_KEY=votre_cle_mistral      # optionnel
-OPENROUTER_API_KEY=votre_cle_openrouter # optionnel
-
-# Administration — générez une valeur unique : openssl rand -base64 48
-ADMIN_TOKEN=un_jeton_aleatoire_d_au_moins_32_caracteres
-
-# Optionnel si le frontend est séparé de l’API
-# ALLOWED_ORIGINS=https://news.exemple.fr
-
-# Traduction (utilise translate.techsentinel.fr par défaut)
-TRANSLATION_URL=https://translate.techsentinel.fr/translate
-```
-
-### Administration des sources
-
-La page **Sources RSS** est volontairement verrouillée. Saisissez le même `ADMIN_TOKEN` que celui défini sur le serveur : il est conservé uniquement dans la session du navigateur, jamais dans le code ou le stockage persistant.
-
-En production, `ADMIN_TOKEN` est obligatoire et doit comporter au moins 32 caractères. La synchronisation est lancée en arrière-plan afin que l’interface reste réactive. Le seed est idempotent : il ajoute les sources par défaut sans supprimer les articles ni les réglages existants.
-
-**Frontend :**
+Dans un deuxième terminal, depuis la racine du dépôt :
 
 ```bash
 cd client
-npm install
+npm ci
 npm run dev
 ```
 
-### 2. Déploiement Docker (Production / Coolify)
+Le frontend Vite s'ouvre sur **http://localhost:5173** et redirige les requêtes `/api` vers l'API locale sur le port `3000`.
+
+**Vérifications disponibles :**
 
 ```bash
-docker-compose up -d --build
+cd server && npm test
 ```
 
-L'application est accessible sur `http://localhost:8080`.
-
-## 📂 Structure du Projet
-
-```
-/
-├── client/              # Frontend React + Vite
-├── server/              # Backend Node.js + Express
-│   ├── prisma/          # Schéma et scripts de seeding
-│   └── services/
-│       ├── ai.js        # Orchestrateur : LibreTranslate + LLM cascade
-│       ├── openrouter.js # Moteur LLM : Groq → Mistral → OpenRouter
-│       └── rss.js       # Agrégateur RSS
-├── context.md           # Contexte technique pour assistants IA
-├── docker-compose.yml
-└── README.md
+```bash
+cd client && npm run lint && npm run build
 ```
 
-## 🤖 Automatisation Assistée
+</details>
 
-Le projet supporte l'automatisation via Antigravity :
+## 🏗️ Architecture
 
-- **Workflows .agent** : Les scripts de maintenance sont dans `.agent/workflows/`.
-- **Pilotage Turbo** : Le mode `auto.md` permet une gestion 100% autonome de la stack Docker et Prisma.
+Un backend chargé de la collecte et des traitements, un frontend léger centré sur la lecture.
 
-## 📝 API Endpoints
+| Couche | Technologies | Rôle |
+|---|---|---|
+| **Interface** | React 19, Vite 7, Tailwind CSS, TanStack Query | Lecture, recherche, navigation, briefs, favoris et administration. |
+| **API** | Node.js 20, Express 5 | Endpoints, accès aux données et contrôle des requêtes. |
+| **Veille** | rss-parser, node-cron, Cheerio | Ingestion, nettoyage, enrichissement et planification des flux. |
+| **Données** | SQLite, Prisma 5 | Articles, sources, favoris et cache des briefs. |
+| **IA / traduction** | Groq, Mistral, OpenRouter, LibreTranslate | Synthèse, catégorisation et traduction avec stratégies de repli. |
+| **Déploiement** | Docker, Docker Compose | Conteneur applicatif et stockage persistant. |
 
-- `GET /api/articles` : Liste des articles (paginé, filtrable).
-- `POST /api/articles/:id/summarize` : Générer un résumé IA.
-- `GET /api/sources` : Liste des flux RSS suivis, incluant désormais le blog Ollama (`https://ollama.com/blog/rss.xml`).
-- `GET /api/health` : État de santé de l'API et de la base de données.
-- `GET /api/briefs` : Briefs quotidiens par catégorie.
+```text
+news/
+├── client/                   # Interface React / Vite
+│   └── src/
+│       ├── pages/            # Actualités, brief, vidéos, fuites...
+│       ├── components/       # Layout et cartes
+│       └── services/         # Client API et parsing du brief
+├── server/                   # API et traitements
+│   ├── prisma/               # Schéma SQLite et seed RSS
+│   ├── services/             # RSS, IA, sécurité, vidéos, déduplication
+│   ├── routes.js             # API REST
+│   └── index.js              # Serveur et actualisation planifiée
+├── docs/assets/              # Identité visuelle GitHub
+├── Dockerfile
+└── docker-compose.yml
+```
+
+## 🔌 API REST
+
+Quelques endpoints utiles pour superviser ou intégrer NewsAI :
+
+| Méthode | Route | Utilité |
+|---|---|---|
+| `GET` | `/api/health` | État de l'API, de SQLite et de l'actualisation RSS |
+| `GET` | `/api/articles` | Articles, recherche, pagination et filtres |
+| `GET` | `/api/articles/stats` | Statistiques de la veille |
+| `GET` | `/api/daily-brief` | Brief IA quotidien |
+| `GET` | `/api/videos` | Vidéos par thème et mots-clés |
+| `GET` | `/api/bookmarks` | Articles favoris |
+| `POST` | `/api/articles/:id/summarize` | Résumé IA d'un article |
+| `GET` | `/api/sources/health` | État des sources (**jeton admin obligatoire**) |
+| `POST` | `/api/sources/refresh` | Demande d'actualisation (**jeton admin obligatoire**) |
+
+Les autres opérations de gestion des sources utilisent également le jeton `X-Admin-Token`. L'accès public à certains endpoints de lecture et les favoris est propre à l'application telle qu'elle est conçue : **n'exposez pas cette instance sans évaluer votre modèle de sécurité**.
+
+## 🔐 Sécurité et exploitation
+
+- **Administration des sources protégée** par `ADMIN_TOKEN`, transmis dans l'en-tête `X-Admin-Token` et gardé en `sessionStorage` côté navigateur.
+- **Validation des URL** des sources et protections contre certaines requêtes SSRF, restriction CORS et limitation du nombre de requêtes sur les opérations concernées.
+- **Données persistantes** dans SQLite : sauvegardez le volume Docker avant toute migration importante.
+- **Fonctionnement dépendant des tiers** : la collecte, YouTube, la traduction et la génération IA dépendent de la disponibilité des services contactés.
+- **Synthèses IA à vérifier** : les briefs facilitent la lecture mais les articles originaux restent la référence.
+
+## 🤝 Participer au projet
+
+Une idée de fonctionnalité, un problème de collecte RSS, une correction d'interface ou une amélioration à proposer ?
+
+[**Signaler un problème**](https://github.com/neosoda/news/issues) · [**Proposer une contribution**](https://github.com/neosoda/news/pulls) · [**Explorer le code**](https://github.com/neosoda/news)
+
+<sub>Le dépôt public ne fournit pas actuellement de fichier LICENSE à sa racine : vérifiez les conditions de réutilisation auprès du mainteneur avant redistribution.</sub>
+
+---
+
+<div align="center">
+
+**NewsAI — Moins de bruit. Plus de signal.** ✦
+
+<sub>Made by <a href="https://github.com/neosoda">neosoda</a> · Pensé pour les passionnés de tech, les développeurs et les professionnels IT.</sub>
+
+<br /><br />
+
+<a href="https://github.com/neosoda/news#readme">↑ Retour en haut</a>
+
+</div>
