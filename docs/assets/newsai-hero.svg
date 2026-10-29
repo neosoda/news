@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="560" viewBox="0 0 1440 560" role="img" aria-labelledby="title desc">
+<title id="title">NewsAI — La veille tech, sans le bruit</title>
+<desc id="desc">Bannière conceptuelle NewsAI : agrégation RSS, intelligence artificielle, brief quotidien et veille cybersécurité. Ce visuel n'est pas une capture de l'application.</desc>
+<defs>
+<linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#071323"/><stop offset=".55" stop-color="#10192f"/><stop offset="1" stop-color="#181b3e"/></linearGradient>
+<radialGradient id="glow" cx="75%" cy="44%" r="65%"><stop stop-color="#26cdd5" stop-opacity=".25"/><stop offset=".55" stop-color="#6c55cc" stop-opacity=".12"/><stop offset="1" stop-color="#000000" stop-opacity="0"/></radialGradient>
+<linearGradient id="brand" x1="0" x2="1"><stop stop-color="#69f6ef"/><stop offset="1" stop-color="#90a4ff"/></linearGradient>
+<linearGradient id="card" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#1a2945"/><stop offset="1" stop-color="#101b32"/></linearGradient>
+<pattern id="mesh" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" fill="none" stroke="#b7dbf9" stroke-opacity=".07"/></pattern>
+<filter id="shadow" x="-30%" y="-30%" width="170%" height="180%"><feDropShadow dx="0" dy="22" stdDeviation="22" flood-color="#000514" flood-opacity=".55"/></filter>
+</defs>
+<rect width="1440" height="560" rx="28" fill="url(#bg)"/>
+<rect width="1440" height="560" rx="28" fill="url(#mesh)"/>
+<rect width="1440" height="560" rx="28" fill="url(#glow)"/>
+<circle cx="1190" cy="210" r="290" fill="none" stroke="#66d5eb" stroke-opacity=".09"/>
+<circle cx="1190" cy="210" r="205" fill="none" stroke="#66d5eb" stroke-opacity=".09"/>
+<circle cx="1190" cy="210" r="120" fill="none" stroke="#66d5eb" stroke-opacity=".1"/>
+<path d="M15 510C420 425 650 620 1040 490" fill="none" stroke="#55d8e5" stroke-opacity=".11" stroke-width="2"/>
+<g font-family="Segoe UI,Arial,sans-serif">
+<rect x="74" y="66" width="52" height="52" rx="15" fill="#1a3d4d" stroke="#56cddc" stroke-opacity=".6"/>
+<rect x="88" y="79" width="25" height="25" rx="4" fill="none" stroke="#80e8f2" stroke-width="2.5"/>
+<path d="M93 86h15M93 92h15M93 98h9" stroke="#80e8f2" stroke-width="2" stroke-linecap="round"/>
+<circle cx="111" cy="100" r="7" fill="#101d37" stroke="#91a5ff" stroke-width="2"/>
+<text x="146" y="85" font-size="16" font-weight="750" fill="#c0e2f2" letter-spacing="3">YOUR TECH INTELLIGENCE</text>
+<text x="146" y="107" font-size="13" fill="#7f9eb8" letter-spacing="1.6">RSS  /  AI  /  CYBERSECURITY</text>
+<text x="70" y="257" font-size="114" font-weight="800" letter-spacing="-5" fill="#ffffff">News<tspan fill="url(#brand)">AI</tspan></text>
+<rect x="74" y="276" width="78" height="5" rx="2.5" fill="#53dce0"/>
+<text x="73" y="333" font-size="31" font-weight="700" fill="#eef7ff">L’essentiel de la tech.</text>
+<text x="74" y="373" font-size="31" font-weight="700" fill="#9ee7e7">Sans le bruit.</text>
+<text x="76" y="411" font-size="17" fill="#a7bbd0">Actualités, IA et cybersécurité réunies dans une</text>
+<text x="76" y="438" font-size="17" fill="#a7bbd0">veille intelligente, claire et auto-hébergeable.</text>
+<g font-size="12" letter-spacing="1" font-weight="700">
+<rect x="74" y="473" width="121" height="39" rx="19" fill="#143f4b" stroke="#3d9399"/>
+<text x="134.5" y="497" fill="#a7fff1" text-anchor="middle">RSS LIVE</text>
+<rect x="208" y="473" width="132" height="39" rx="19" fill="#1c3054" stroke="#4d639c"/>
+<text x="274" y="497" fill="#c7d5ff" text-anchor="middle">BRIEF IA</text>
+<rect x="352" y="473" width="144" height="39" rx="19" fill="#1c3054" stroke="#4d639c"/>
+<text x="424" y="497" fill="#c7d5ff" text-anchor="middle">CYBER WATCH</text>
+</g>
+</g>
+<!-- Conceptual editorial interface. Not a screenshot. -->
+<g filter="url(#shadow)" font-family="Segoe UI,Arial,sans-serif">
+<g transform="translate(811 75) rotate(-4 213 220)">
+<rect width="465" height="413" rx="23" fill="#111d33" stroke="#35526e" stroke-width="1.5"/>
+<rect x="1" y="1" width="463" height="58" rx="22" fill="#1a2c45"/>
+<path d="M1 40h463v20H1z" fill="#1a2c45"/>
+<circle cx="28" cy="30" r="5" fill="#f77c92"/><circle cx="47" cy="30" r="5" fill="#ecc87b"/><circle cx="66" cy="30" r="5" fill="#76ddbf"/>
+<text x="91" y="36" font-size="14" font-weight="700" fill="#d9ecf8" letter-spacing="2">NEWSAI / EDITION</text>
+<rect x="330" y="20" width="111" height="23" rx="11" fill="#154346"/>
+<circle cx="345" cy="31.5" r="4" fill="#61dfb8"/>
+<text x="358" y="36" font-size="10.5" fill="#a6fae4" font-weight="700">LIVE FEEDS</text>
+<rect x="23" y="80" width="419" height="108" rx="12" fill="#172a45" stroke="#294a66"/>
+<rect x="38" y="95" width="93" height="79" rx="10" fill="#233d5c"/>
+<circle cx="84" cy="134" r="24" fill="none" stroke="#62cde1" stroke-width="2" stroke-opacity=".6"/>
+<path d="M66 140l15-15 12 9 12-16" stroke="#68e0dc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text x="145" y="107" font-size="10" font-weight="700" letter-spacing="2" fill="#6de7df">À LA UNE</text>
+<text x="145" y="136" font-size="21" fill="#eff9ff" font-weight="750">Radar technologique</text>
+<text x="145" y="159" font-size="12" fill="#93b3c9">Signaux clés, sources et contexte</text>
+<rect x="23" y="204" width="198" height="170" rx="13" fill="url(#card)" stroke="#335371"/>
+<rect x="234" y="204" width="208" height="170" rx="13" fill="url(#card)" stroke="#335371"/>
+<text x="40" y="232" font-size="12" letter-spacing="1.5" fill="#85eff2" font-weight="700">01  BRIEF IA</text>
+<text x="40" y="258" font-size="17" fill="#e9f4ff" font-weight="700">L’info qui compte</text>
+<rect x="40" y="274" width="157" height="7" rx="3" fill="#55718b"/><rect x="40" y="290" width="140" height="7" rx="3" fill="#344e69"/><rect x="40" y="306" width="122" height="7" rx="3" fill="#344e69"/>
+<rect x="40" y="335" width="87" height="24" rx="12" fill="#1c4b50"/>
+<text x="84" y="351" text-anchor="middle" font-size="10" font-weight="750" fill="#9df8e1">SYNTHÈSE</text>
+<text x="250" y="232" font-size="12" letter-spacing="1.5" fill="#ada5ff" font-weight="700">02  VEILLE CYBER</text>
+<text x="250" y="258" font-size="17" fill="#e9f4ff" font-weight="700">Alertes &amp; tendances</text>
+<path d="M250 322l28-21 27 10 25-29 30 10 24-38 34 20" stroke="#ad9aff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M250 340h170" stroke="#36516d" stroke-width="1.5"/>
+<circle cx="384" cy="254" r="5" fill="#a99aff"/>
+<text x="25" y="398" font-size="11" fill="#7398b5" letter-spacing="1.5">READ  •  FILTER  •  UNDERSTAND</text>
+</g>
+</g>
+<text x="1380" y="540" text-anchor="end" fill="#66829e" font-family="Segoe UI,Arial,sans-serif" font-size="11" letter-spacing="1">ILLUSTRATION CONCEPTUELLE</text>
+</svg>
