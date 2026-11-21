@@ -20,7 +20,7 @@ Agrégation RSS · Briefs IA · Cybersécurité · Vidéos · Fuites de données
 
 <br />
 
-[**Découvrir les fonctionnalités**](#-une-veille-qui-va-à-lessentiel) · [**Installer avec Docker**](#-déploiement-avec-docker) · [**Comprendre l'architecture**](#-architecture) · [**Explorer l'API**](#-api-rest)
+[**🌐 Ouvrir TechNews**](https://news.techsentinel.fr/) · [**Découvrir les fonctionnalités**](#-une-veille-qui-va-à-lessentiel) · [**Installer avec Docker**](#-déploiement-avec-docker) · [**Comprendre l'architecture**](#-architecture) · [**Explorer l'API**](#-api-rest)
 
 <sub>Projet développé par <a href="https://github.com/neosoda">neosoda</a> · React + Express + Prisma · Déployable sur Docker et Coolify</sub>
 
@@ -241,6 +241,14 @@ Les autres opérations de gestion des sources utilisent également le jeton `X-A
 - **Données persistantes** dans SQLite : sauvegardez le volume Docker avant toute migration importante.
 - **Fonctionnement dépendant des tiers** : la collecte, YouTube, la traduction et la génération IA dépendent de la disponibilité des services contactés.
 - **Synthèses IA à vérifier** : les briefs facilitent la lecture mais les articles originaux restent la référence.
+
+## Questions fréquentes
+
+**Comment suivre plusieurs sources de veille informatique au même endroit ?** NewsAI collecte les flux RSS configurés, supprime les doublons et classe les articles par catégorie.
+
+**Peut-on obtenir des résumés de l'actualité IT et cybersécurité avec l'IA ?** Oui, si un fournisseur IA est configuré. Les synthèses doivent rester vérifiées par rapport aux sources originales.
+
+**L'application est-elle auto-hébergeable ?** Oui, le dépôt fournit un déploiement Docker. Une [instance TechNews](https://news.techsentinel.fr/) est également indiquée dans les informations du dépôt.
 
 ## 🤝 Participer au projet
 
