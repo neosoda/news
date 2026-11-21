@@ -248,7 +248,15 @@ Une idée de fonctionnalité, un problème de collecte RSS, une correction d'int
 
 [**Signaler un problème**](https://github.com/neosoda/news/issues) · [**Proposer une contribution**](https://github.com/neosoda/news/pulls) · [**Explorer le code**](https://github.com/neosoda/news)
 
-<sub>Le dépôt public ne fournit pas actuellement de fichier LICENSE à sa racine : vérifiez les conditions de réutilisation auprès du mainteneur avant redistribution.</sub>
+## Licence et réutilisation
+
+Le **code original** de NewsAI est proposé sous **Apache License 2.0 + Commons Clause 1.0** (licence *source-available*, **non reconnue comme open source**). Voir [LICENSE](LICENSE).
+
+L'utilisation personnelle, l'auto-hébergement non commercial et les modifications sont autorisés dans les limites du texte de licence. La revente du logiciel ou d'un service payant tirant **entièrement ou substantiellement** sa valeur de ses fonctionnalités nécessite une autorisation écrite du titulaire des droits. **La Commons Clause ne prohibe pas tous les SaaS commerciaux** : les produits apportant une valeur substantielle supplémentaire peuvent être autorisés.
+
+Les logiciels, bibliothèques, contenus et installateurs de tiers restent soumis à **leurs propres licences**, qui ne sont pas remplacées par celle du projet.
+
+
 
 ---
 
