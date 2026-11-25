@@ -64,8 +64,9 @@ const CATEGORY_RANK_BOOST_MINUTES = {
 };
 
 function parsePositiveInt(value, fallback) {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+    if (!/^\d+$/.test(String(value))) return fallback;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= 2147483647 ? parsed : fallback;
 }
 
 function parseEntityId(value) {
@@ -90,9 +91,6 @@ function getArticleRankScore(article) {
 
     score += (CATEGORY_RANK_BOOST_MINUTES[category] || 0) * RANKING_MINUTE_MS;
 
-    if (article?.isBookmarked) {
-        score += 6 * 60 * RANKING_MINUTE_MS;
-    }
     if (article?.image) {
         score += 20 * RANKING_MINUTE_MS;
     }
@@ -166,10 +164,10 @@ router.get('/health', async (req, res) => {
 });
 
 // GET /articles - List articles with pagination and search
-router.get('/articles', async (req, res) => {
-    const page = parsePositiveInt(req.query.page, 1);
+router.get('/articles', (req, res, next) => req.query.bookmarked === 'true' ? requireAdmin(req, res, next) : next(), async (req, res) => {
+    const page = Math.min(parsePositiveInt(req.query.page, 1), 10000);
     const limit = Math.min(parsePositiveInt(req.query.limit, DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
-    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
     const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
     const sourceId = parsePositiveInt(req.query.sourceId, null);
     const maxAllowedDate = new Date(Date.now() + MAX_FUTURE_SKEW_MS);
@@ -239,7 +237,7 @@ router.get('/articles', async (req, res) => {
         const total = await prisma.article.count({ where });
 
         res.json({
-            data: repairMojibakeDeep(rankArticlesForDailyScan(articles)),
+            data: repairMojibakeDeep(rankArticlesForDailyScan(articles).map(({ isBookmarked, ...article }) => ({ ...article, isBookmarked: req.query.bookmarked === 'true' && isBookmarked }))),
             pagination: {
                 total,
                 page,
@@ -248,7 +246,7 @@ router.get('/articles', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching articles:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -267,7 +265,7 @@ router.get('/sources', async (req, res) => {
         res.json(sources);
     } catch (error) {
         console.error('Error fetching sources:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -315,7 +313,7 @@ router.get('/sources/health', async (req, res) => {
         res.json({ summary, data });
     } catch (error) {
         console.error('Error fetching source health:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -344,7 +342,7 @@ router.post('/sources', limitAdminMutation, async (req, res) => {
             return res.status(409).json({ error: 'Source URL already exists.' });
         }
 
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -368,7 +366,7 @@ router.post('/sources/:id/reactivate', limitAdminMutation, async (req, res) => {
         });
         res.json(source);
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -380,13 +378,16 @@ router.delete('/sources/:id', limitAdminMutation, async (req, res) => {
     }
 
     try {
-        await prisma.$transaction([
-            prisma.article.deleteMany({ where: { sourceId } }),
-            prisma.source.delete({ where: { id: sourceId } })
-        ]);
+        const removed = await prisma.$transaction(async tx => {
+            if (await tx.article.count({ where: { sourceId, isBookmarked: true } })) return false;
+            await tx.article.deleteMany({ where: { sourceId } });
+            await tx.source.delete({ where: { id: sourceId } });
+            return true;
+        });
+        if (!removed) return res.status(409).json({ error: 'Cette source contient des favoris historiques. Retirez-les avant la suppression.' });
         res.json({ success: true });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -461,7 +462,7 @@ router.post('/admin/repair-encoding', requireAdmin, limitAdminMutation, async (r
         });
     } catch (error) {
         console.error('Encoding repair failed:', error.message);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -500,7 +501,7 @@ router.get('/articles/stats', async (req, res) => {
         res.json({ stats, total });
     } catch (error) {
         console.error('Error fetching article stats:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -532,12 +533,12 @@ router.post('/articles/:id/summarize', limitSummarization, limitAIGeneration, as
         const updated = await pending;
         res.json({ summary: repairMojibake(updated.summary) });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
 // POST /articles/:id/bookmark - Toggle bookmark
-router.post('/articles/:id/bookmark', async (req, res) => {
+router.post('/articles/:id/bookmark', requireAdmin, limitAdminMutation, async (req, res) => {
     const articleId = parseEntityId(req.params.id);
     if (articleId === null) {
         return res.status(400).json({ error: 'Invalid article id.' });
@@ -554,12 +555,12 @@ router.post('/articles/:id/bookmark', async (req, res) => {
 
         res.json({ isBookmarked: updated.isBookmarked });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
 // GET /bookmarks - Helper route for only bookmarks
-router.get('/bookmarks', async (req, res) => {
+router.get('/bookmarks', requireAdmin, async (req, res) => {
     try {
         const maxAllowedDate = new Date(Date.now() + MAX_FUTURE_SKEW_MS);
         const bookmarks = await prisma.article.findMany({
@@ -572,7 +573,7 @@ router.get('/bookmarks', async (req, res) => {
         });
         res.json(repairMojibakeDeep(bookmarks));
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 

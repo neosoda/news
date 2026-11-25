@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { ExternalLink, Bot, Sparkles, Bookmark, Newspaper } from 'lucide-react';
-import { summarizeArticle, toggleBookmark } from '../services/api';
-import { useQueryClient } from '@tanstack/react-query';
+import { summarizeArticle, toggleBookmark, getBookmarks } from '../services/api';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 
 const CATEGORY_COLORS = {
     'Cybersecurité': 'bg-red-500/[0.15] text-red-300 border-red-400/25',
@@ -112,10 +113,13 @@ function ArticleArtwork({ article, category }) {
 export default function ArticleCard({ article }) {
     const queryClient = useQueryClient();
     const [summary, setSummary] = useState(article.summary);
-    const [isBookmarked, setIsBookmarked] = useState(article.isBookmarked);
+    const { data: bookmarks = [] } = useQuery({ queryKey: ['bookmarks'], queryFn: getBookmarks });
+    const isBookmarked = bookmarks.some(item => item.link === article.link);
+    const [actionError, setActionError] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleSummarize = async () => {
+        setActionError('');
         setLoading(true);
         try {
             const data = await summarizeArticle(article.id);
@@ -123,21 +127,19 @@ export default function ArticleCard({ article }) {
             queryClient.invalidateQueries({ queryKey: ['articles'] });
         } catch (e) {
             console.error(e);
+            setActionError('Résumé indisponible. Réessayez plus tard.');
         } finally {
             setLoading(false);
         }
     };
 
     const handleBookmark = async () => {
-        const newState = !isBookmarked;
-        setIsBookmarked(newState);
+        setActionError('');
         try {
-            await toggleBookmark(article.id);
-            queryClient.invalidateQueries({ queryKey: ['articles'] });
-            queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+            queryClient.setQueryData(['bookmarks'], await toggleBookmark({ ...article, summary }));
         } catch (e) {
             console.error(e);
-            setIsBookmarked(!newState);
+            setActionError('Impossible de sauvegarder le favori sur cet appareil.');
         }
     };
 
@@ -147,7 +149,7 @@ export default function ArticleCard({ article }) {
 
     return (
         <article
-            className={`group relative flex min-h-full flex-col overflow-hidden rounded-xl border surface-card transition-all duration-300 hover:-translate-y-0.5 hover:bg-cyan-400/[0.06] hover:shadow-2xl hover:shadow-cyan-950/10 ${featured ? featured.border : 'theme-border'
+            className={`group relative flex min-h-full flex-col overflow-hidden rounded-xl border surface-card transition-all duration-300 hover:border-[var(--color-border-strong)] ${featured ? featured.border : 'theme-border'
                 }`}
             style={featured ? { boxShadow: featured.shadow } : undefined}
         >
@@ -167,6 +169,8 @@ export default function ArticleCard({ article }) {
             </div>
 
             <button
+                type="button"
+                aria-pressed={isBookmarked}
                 onClick={handleBookmark}
                 aria-label={isBookmarked ? 'Retirer des favoris' : 'Ajouter aux favoris'}
                 className="absolute top-3 right-3 z-10 p-2 rounded-full bg-[var(--color-surface-raised)]/90 hover:bg-cyan-400/15 backdrop-blur-md text-primary border theme-border transition-colors"
@@ -184,7 +188,7 @@ export default function ArticleCard({ article }) {
                         <span className="truncate">{article.source?.name}</span>
                     </div>
                     <span className="shrink-0 text-muted italic">
-                        {formatDistanceToNow(new Date(article.date), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(article.date), { addSuffix: true, locale: fr })}
                     </span>
                 </div>
 
@@ -220,6 +224,7 @@ export default function ArticleCard({ article }) {
                     ) : null
                 )}
 
+                {actionError && <p role="alert" className="mt-3 text-sm text-red-300">{actionError}</p>}
                 <div className="mt-4 pt-4 border-t theme-border flex items-center justify-between">
                     {!summary && (
                         <button

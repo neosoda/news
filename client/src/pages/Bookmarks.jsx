@@ -26,8 +26,9 @@ export default function Bookmarks() {
                         <span>Lecture différée</span>
                     </div>
                     <h1 className="text-4xl sm:text-5xl font-black text-primary tracking-tighter">
-                        Mes <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 truncate inline-block">Favoris</span>
+                        Mes favoris
                     </h1>
+                    <p className="mt-2 text-sm text-secondary">Enregistrés dans ce navigateur, même après la disparition de l’article du fil.</p>
                 </div>
 
                 <div className="relative">
@@ -36,6 +37,7 @@ export default function Bookmarks() {
                     </div>
                     <input
                         type="text"
+                        aria-label="Filtrer mes favoris"
                         placeholder="Filtrer mes favoris..."
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
@@ -47,11 +49,11 @@ export default function Bookmarks() {
             {isLoading ? (
                 <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
                     <Loader2 className="animate-spin text-yellow-500" size={48} />
-                    <p className="text-secondary font-medium animate-pulse">Chargement de vos trésors...</p>
+                    <p className="text-secondary font-medium animate-pulse">Chargement des favoris…</p>
                 </div>
             ) : isError ? (
                 <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-3xl text-red-500 font-bold flex items-center justify-center">
-                    Impossible de charger les favoris via le flux neural.
+                    Impossible de charger vos favoris.
                 </div>
             ) : filteredArticles.length === 0 ? (
                 <div className="flex flex-col items-center justify-center min-h-[400px] text-muted space-y-4">

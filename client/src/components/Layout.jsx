@@ -125,6 +125,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                             value={search}
                             onChange={(e) => onSearch && onSearch(e.target.value)}
                             className="theme-input block w-full pl-12 pr-4 py-2.5 rounded-xl leading-5 transition-all duration-300 text-sm sm:text-base"
+                            aria-label="Rechercher des actualités"
                             placeholder="Rechercher des actualités..."
                         />
                     </div>}

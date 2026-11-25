@@ -15,11 +15,17 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - TRANSLATION_URL=https://translate.techsentinel.fr/translate
+      - TRANSLATION_URL=${TRANSLATION_URL:-https://translate.techsentinel.fr/translate}
       - ENABLE_IMAGE_RECOVERY_FETCH=true
       - SOURCE_FAILURE_COOLDOWN_MINUTES=60
       - SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES=12
       - FEED_CONCURRENCY=4
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     volumes:
       - news-data:/app/prisma
     networks:

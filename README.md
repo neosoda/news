@@ -42,7 +42,7 @@ L'objectif : **passer moins de temps à chercher l'information et plus de temps 
 | ⚡ | **Brief IA quotidien** | Synthèses structurées par thème, avec points clés et renvois vers les articles sources. |
 | 🛡️ | **Fuites de données** | Espace dédié aux alertes publiées par Bonjour la fuite, Fuites Infos et FrenchBreaches. |
 | 🎬 | **Vidéos** | Veille IA, IT, tech et développement depuis des chaînes YouTube via leurs flux. |
-| 🔖 | **Favoris** | Mise de côté des articles à retrouver plus tard. |
+| 🔖 | **Favoris** | Favoris individuels stockés dans le navigateur, sans compte. |
 | 📡 | **Sources RSS** | Ajout et suppression de sources, état de santé des flux, relance et réactivation, sous accès administrateur. |
 
 <sub>Interface responsive avec thème clair/sombre ; les fonctions IA nécessitent au moins une clé de fournisseur configurée.</sub>
@@ -232,7 +232,7 @@ Quelques endpoints utiles pour superviser ou intégrer NewsAI :
 | `GET` | `/api/sources/health` | État des sources (**jeton admin obligatoire**) |
 | `POST` | `/api/sources/refresh` | Demande d'actualisation (**jeton admin obligatoire**) |
 
-Les autres opérations de gestion des sources utilisent également le jeton `X-Admin-Token`. L'accès public à certains endpoints de lecture et les favoris est propre à l'application telle qu'elle est conçue : **n'exposez pas cette instance sans évaluer votre modèle de sécurité**.
+Les autres opérations de gestion des sources utilisent également le jeton `X-Admin-Token`. Les favoris individuels sont stockés localement par navigateur. Les anciennes entrées en base sont conservées et accessibles uniquement avec le jeton administrateur (`GET /api/bookmarks`, `POST /api/articles/:id/bookmark`, `GET /api/articles?bookmarked=true`). Aucun transfert automatique de favoris partagés n'est effectué.
 
 ## 🔐 Sécurité et exploitation
 

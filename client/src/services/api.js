@@ -75,14 +75,19 @@ export const summarizeArticle = async (id) => {
     return data;
 };
 
+const BOOKMARK_KEY = 'newsai-bookmarks-v1';
 export const getBookmarks = async () => {
-    const { data } = await api.get('/bookmarks');
-    return data;
+    const parsed = JSON.parse(window.localStorage.getItem(BOOKMARK_KEY) || '[]');
+    if (!Array.isArray(parsed)) throw new Error('Invalid bookmarks');
+    return parsed;
 };
 
-export const toggleBookmark = async (id) => {
-    const { data } = await api.post(`/articles/${id}/bookmark`);
-    return data;
+export const toggleBookmark = async (article) => {
+    const current = await getBookmarks();
+    const exists = current.some(item => item.link === article.link);
+    const next = exists ? current.filter(item => item.link !== article.link) : [{ ...article, isBookmarked: true }, ...current];
+    window.localStorage.setItem(BOOKMARK_KEY, JSON.stringify(next));
+    return next;
 };
 
 export const getDailyBrief = async () => {
