@@ -120,3 +120,6 @@ export const getVideos = async ({ query = '', topics = '', limit = 24 } = {}) =>
 export const getEditorial = async () => (await api.get('/editorial')).data;
 
 export const getArticleSources = async () => (await api.get('/article-sources')).data;
+
+export const getKev = async (search='',page=1) => (await api.get('/cyber/kev',{params:{search,page}})).data;
+export const getCert = async () => (await api.get('/cyber/cert')).data;

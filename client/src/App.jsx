@@ -8,6 +8,7 @@ import DailyBrief from './pages/DailyBrief';
 import Videos from './pages/Videos';
 import Breaches from './pages/Breaches';
 import Editorial from './pages/Editorial';
+import CyberRadar from './pages/CyberRadar';
 
 const THEME_STORAGE_KEY = 'newsai-theme';
 const DEFAULT_THEME = 'dark';
@@ -51,6 +52,7 @@ function App() {
     <Layout search={activeSearch} onSearch={setSearch} theme={theme} onToggleTheme={toggleTheme}>
       <Routes>
         <Route path="/" element={<Dashboard search={search} category={category} setCategory={setCategory} />} />
+        <Route path="/cyber" element={<CyberRadar />} />
         <Route path="/editorial" element={<Editorial />} />
         <Route path="/daily-brief" element={<DailyBrief />} />
         <Route path="/videos" element={<Videos search={search} />} />

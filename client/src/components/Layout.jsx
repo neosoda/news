@@ -46,6 +46,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
         switch (location.pathname) {
             case '/': return 'Actualités';
             case '/editorial': return 'Dossiers et tendances';
+            case '/cyber': return 'Cyber Radar';
             case '/daily-brief': return 'Brief IA Quotidien';
             case '/videos': return 'Vidéos IA & Tech';
             case '/breaches': return 'Fuites de données';
@@ -88,6 +89,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                     <NavItem to="/editorial" icon={TrendingUp} onClick={closeSidebar}>Dossiers et tendances</NavItem>
                     <NavItem to="/daily-brief" icon={Zap} onClick={closeSidebar}>Brief IA</NavItem>
                     <NavItem to="/videos" icon={PlayCircle} onClick={closeSidebar}>Vidéos</NavItem>
+                    <NavItem to="/cyber" icon={ShieldAlert} onClick={closeSidebar}>Cyber Radar</NavItem>
                     <NavItem to="/breaches" icon={ShieldAlert} onClick={closeSidebar}>Fuites de données</NavItem>
                     <NavItem to="/bookmarks" icon={Bookmark} onClick={closeSidebar}>Favoris</NavItem>
                     <NavItem to="/sources" icon={Rss} onClick={closeSidebar}>Sources</NavItem>

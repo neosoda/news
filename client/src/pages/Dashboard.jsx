@@ -70,6 +70,7 @@ export default function Dashboard({ search, category, setCategory }) {
                 {editorial?.topics.slice(0,4).map(t=><article key={t.id} className="border-b theme-border pb-4"><p className="text-xs text-accent">{t.sourceCount} sources · {t.category}</p><h3 className="text-primary font-semibold mt-1">{t.title}</h3></article>)}
                 {!editorial?.topics.length&&<p className="text-sm text-secondary">Les dossiers apparaissent lorsque plusieurs sources publient des titres similaires.</p>}
                 <Link to="/editorial" className="text-sm font-semibold text-accent hover:underline">Tous les dossiers et tendances →</Link>
+                <Link to="/cyber" className="block text-sm font-semibold text-accent hover:underline">Cyber Radar →</Link>
             </aside>
         </div>
     </div>;

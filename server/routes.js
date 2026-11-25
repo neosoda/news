@@ -15,6 +15,7 @@ const {
 const { repairMojibake, repairMojibakeDeep } = require('./services/encoding');
 const prisma = require('./db');
 const { buildEditorial } = require('./services/editorial');
+const { getCatalog } = require('./services/kev');
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
@@ -283,6 +284,27 @@ router.get('/article-sources', async (req,res) => {
         });
         res.json(repairMojibakeDeep(sources));
     } catch (error) { console.error('Public source list failed:',error); res.status(503).json({error:'Sources indisponibles.'}); }
+});
+
+router.get('/cyber/kev', async (req,res)=>{
+    try {
+        const catalog=await getCatalog();
+        const search=normalizeInput(req.query.search,120).toLowerCase();
+        const entries=catalog.entries.filter(v=>!search||[v.cve,v.vendor,v.product,v.name].some(x=>x.toLowerCase().includes(search)));
+        const page=Math.min(parsePositiveInt(req.query.page,1),10000);
+        const {entries:all,...meta}=catalog;
+        res.json({data:entries.slice((page-1)*30,page*30),meta:{...meta,total:entries.length,catalogSize:all.length,page,pages:Math.ceil(entries.length/30)}});
+    } catch(error) {console.error('KEV unavailable:',error.message);res.status(503).json({error:'Catalogue CISA indisponible.'});}
+});
+router.get('/cyber/cert', async (req,res)=>{
+    try {
+        const rows=await prisma.article.findMany({
+            where:{source:{name:{startsWith:'CERT-FR'}},date:{lte:new Date()},OR:[{category:null},{category:{not:'Spam'}}]},
+            orderBy:[{date:'desc'},{id:'desc'}],take:40,
+            select:{id:true,title:true,link:true,date:true,content:true,source:{select:{name:true}}}
+        });
+        res.json(repairMojibakeDeep(rows.map(({content,...a})=>({...a,cves:[...new Set((a.title+' '+(content||'')).match(/\bCVE-\d{4}-\d{4,}\b/gi)||[])].map(v=>v.toUpperCase()).slice(0,20)}))));
+    }catch(error){console.error('CERT feed unavailable:',error.message);res.status(503).json({error:'Flux CERT-FR indisponible.'});}
 });
 
 // Source administration is intentionally protected as it exposes feed URLs and changes global data.
