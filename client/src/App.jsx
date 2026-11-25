@@ -1,16 +1,16 @@
-import React, { useDeferredValue, useEffect, useState } from 'react';
+import React, { useDeferredValue, useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, useSearchParams, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
-import Sources from './pages/Sources';
-import Bookmarks from './pages/Bookmarks';
-import DailyBrief from './pages/DailyBrief';
-import Videos from './pages/Videos';
-import Breaches from './pages/Breaches';
-import Editorial from './pages/Editorial';
-import CyberRadar from './pages/CyberRadar';
-import SourceObservatory from './pages/SourceObservatory';
-import ReadingHistory from './pages/ReadingHistory';
+const Sources=lazy(()=>import('./pages/Sources'));
+const Bookmarks=lazy(()=>import('./pages/Bookmarks'));
+const DailyBrief=lazy(()=>import('./pages/DailyBrief'));
+const Videos=lazy(()=>import('./pages/Videos'));
+const Breaches=lazy(()=>import('./pages/Breaches'));
+const Editorial=lazy(()=>import('./pages/Editorial'));
+const CyberRadar=lazy(()=>import('./pages/CyberRadar'));
+const SourceObservatory=lazy(()=>import('./pages/SourceObservatory'));
+const ReadingHistory=lazy(()=>import('./pages/ReadingHistory'));
 
 const THEME_STORAGE_KEY = 'newsai-theme';
 const DEFAULT_THEME = 'dark';
@@ -38,7 +38,8 @@ function App() {
     },{replace:true});
     else setSearchInput(value);
   };
-  const [category, setCategory] = useState('');
+  const category=params.get('category')||'';
+  const setCategory=value=>setParams(previous=>{const next=new URLSearchParams(previous);if(value)next.set('category',value);else next.delete('category');return next;},{replace:true});
   const [theme, setTheme] = useState(getInitialTheme);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ function App() {
 
   return (
     <Layout search={activeSearch} onSearch={setSearch} theme={theme} onToggleTheme={toggleTheme}>
+      <Suspense fallback={<p role="status" className="p-6 text-secondary">Chargement de la page…</p>}>
       <Routes>
         <Route path="/" element={<Dashboard search={search} category={category} setCategory={setCategory} />} />
         <Route path="/cyber" element={<CyberRadar />} />
@@ -64,6 +66,7 @@ function App() {
         <Route path="/observatory" element={<SourceObservatory />} />
         <Route path="/sources" element={<Sources />} />
       </Routes>
+      </Suspense>
     </Layout>
   );
 }

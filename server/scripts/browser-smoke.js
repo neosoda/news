@@ -40,8 +40,16 @@ async function main(){
         await evaluate('document.querySelector("article a[href=\\\"https://example.com/article/1\\\"]").closest("article").querySelector("button[aria-label=\\\"Ajouter aux favoris\\\"]").click()');
         await until(()=>evaluate('JSON.parse(localStorage.getItem("newsai-bookmarks-v1")||"[]").length===1'),'bookmark persisted');
         await nav('/bookmarks');await waitText('Microsoft Azure Kubernetes cluster migration');
+        await evaluate('(()=>{const a=document.querySelector("main a[href=\\\"https://example.com/article/1\\\"]");a.addEventListener("click",e=>e.preventDefault(),{once:true});a.click();})()');
+        await until(()=>evaluate('JSON.parse(localStorage.getItem("newsai-opened-articles-v1")||"[]").length===1'),'history persisted');
+        await nav('/history');await waitText('Microsoft Azure Kubernetes cluster migration');
         await nav('/?q=Azure&period=24h');await waitText('Microsoft Azure Kubernetes cluster migration');
         await until(()=>evaluate('!document.querySelector("main section[aria-label=\\\"Actualités\\\"]")?.innerText.includes("Fixture CERT advisory")'),'filtered results');
+        await nav('/');await waitText('Microsoft Azure Kubernetes cluster migration');
+        await until(()=>evaluate('Boolean([...document.querySelectorAll("label")].find(x=>x.innerText.trim()==="Fixture Technology"&&x.querySelector("input[type=checkbox]")))'),'source preferences');
+        await evaluate('(()=>{const label=[...document.querySelectorAll("label")].find(x=>x.innerText.trim()==="Fixture Technology"&&x.querySelector("input[type=checkbox]"));label.closest("details").open=true;label.querySelector("input").click();})()');
+        await until(()=>evaluate('JSON.parse(localStorage.getItem("newsai-hidden-sources-v1")||"[]").length===1 && !document.querySelector("main section[aria-label=\\\"Actualités\\\"] a[href=\\\"https://example.com/article/1\\\"]")'),'source hidden');
+        await evaluate('localStorage.removeItem("newsai-hidden-sources-v1")');
         await nav('/editorial');await waitText('2 sources');await shot('editorial-desktop');
         await nav('/cyber');await waitText('ExampleVendor');await waitText('Fixture CERT advisory');await shot('cyber-desktop');
         await nav('/observatory');await waitText('Fixture Technology');
@@ -56,7 +64,7 @@ async function main(){
             await shot('home-'+width);
             await nav('/cyber');await waitText('ExampleVendor');await shot('cyber-'+width);
         }
-        console.log('PASS: home, search, bookmarks, dossiers, Cyber Radar, source observatory, archived brief, desktop and mobile viewport smoke checks');
+        console.log('PASS: home, search, bookmarks, local history, hidden sources, dossiers, Cyber Radar, source observatory, archived brief, desktop and mobile viewport smoke checks');
     }finally{ws?.close();app.kill();chrome.kill();await delay(500);rmSync(dir,{recursive:true,force:true});}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

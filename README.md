@@ -293,3 +293,5 @@ Les logiciels, bibliothèques, contenus et installateurs de tiers restent soumis
 - CI navigateur : Chrome headless, base SQLite temporaire, catalogue KEV de test, sans appel aux fournisseurs IA. Captures enregistrées comme artefacts CI.
 
 - Personnalisation locale : masquage de sources, recherches suivies et historique des 100 derniers liens ouverts, effaçable à tout moment. Aucun compte ni synchronisation serveur.
+
+- Interface éditoriale : cartes sans illustration artificielle, navigation clavier améliorée et chargement différé des pages secondaires.

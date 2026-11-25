@@ -251,3 +251,9 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Neutral reading canvas; editorial images carry the visual hierarchy. */
+body { background-image: none !important; }
+:root { --color-bg: #0c1015; --color-surface: #141a21; --color-surface-raised: #141a21; }
+:root[data-theme='light'] { --color-bg: #f7f5ef; --color-surface: #fffdf8; --color-surface-raised: #fffdf8; }
+.glass-header, .glass-sidebar { background: var(--color-bg); }

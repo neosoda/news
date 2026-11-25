@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, ShieldAlert, Sun, Moon, TrendingUp, History } from 'lucide-react';
 import clsx from 'clsx';
@@ -30,6 +30,12 @@ function NavItem({ to, icon, children, onClick }) {
 export default function Layout({ children, onSearch, search, theme, onToggleTheme }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const location = useLocation();
+    useEffect(() => {
+        if (!isSidebarOpen) return;
+        const onKeyDown = event => { if (event.key === 'Escape') setIsSidebarOpen(false); };
+        window.addEventListener('keydown',onKeyDown);
+        return () => window.removeEventListener('keydown',onKeyDown);
+    },[isSidebarOpen]);
     const { data: health, isError: isHealthError } = useQuery({
         queryKey: ['health'],
         queryFn: getHealth,
@@ -60,6 +66,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
 
     return (
         <div className="app-shell flex h-screen font-sans overflow-hidden">
+            <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:p-3 surface-card text-primary">Aller au contenu</a>
             {isSidebarOpen && (
                 <div
                     className="theme-overlay fixed inset-0 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
@@ -69,11 +76,11 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
 
             <aside className={clsx(
                 "fixed inset-y-0 left-0 z-50 w-72 glass-sidebar flex-shrink-0 flex flex-col transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static",
-                isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+                isSidebarOpen ? "translate-x-0 visible" : "-translate-x-full invisible lg:visible"
             )}>
                 <div className="p-7 flex items-center justify-between border-b theme-divider">
                     <div className="flex items-center space-x-3">
-                        <div className="bg-cyan-400/10 border border-cyan-300/25 p-2 rounded-lg shadow-lg shadow-cyan-950/30">
+                        <div className="p-2 text-accent">
                             <Newspaper className="text-cyan-200" size={24} />
                         </div>
                         <div>
@@ -136,7 +143,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                             onChange={(e) => onSearch && onSearch(e.target.value)}
                             className="theme-input block w-full pl-12 pr-4 py-2.5 rounded-xl leading-5 transition-all duration-300 text-sm sm:text-base"
                             aria-label="Rechercher des actualités"
-                            placeholder="Rechercher des actualités..."
+                            placeholder="Rechercher…"
                         />
                     </div>}
 
@@ -156,13 +163,10 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                                 {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
                             </span>
                         </button>
-                        <div className="hidden md:flex w-10 h-10 rounded-xl bg-cyan-400/10 border border-cyan-300/25 items-center justify-center text-accent font-black shadow-lg shadow-cyan-950/20">
-                            N
-                        </div>
                     </div>
                 </header>
 
-                <main id="main-content" className="flex-1 overflow-y-auto p-4 lg:p-7 scroll-smooth">
+                <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-4 lg:p-7 scroll-smooth">
                     <div className="max-w-[1500px] mx-auto">
                         {children}
                     </div>
