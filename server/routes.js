@@ -256,69 +256,196 @@ router.get('/articles', (req, res, next) => req.query.bookmarked === 'true' ? re
 });
 
 // Bounded editorial analysis: no LLM calls and no database mutations.
-let editorialCache;
-let editorialPending;
+let editorialCache = null;
+let editorialPending = null;
 router.get('/editorial', async (req, res) => {
     try {
         if (!editorialCache || Date.now() - editorialCache.at > 300000) {
-            if (!editorialPending) editorialPending = (async () => {
-                const now = Date.now();
-                const rows = await prisma.article.findMany({
-                    where: { date: { gte: new Date(now-2*86400000), lte: new Date(now) },
-                        AND: [{ OR: [{ category:null }, { category:{ not:'Spam' } }] }, ...buildBreachExclusionWhere().AND] },
-                    select: { id:true,title:true,link:true,date:true,image:true,category:true,sourceId:true,source:{select:{name:true,category:true}} },
-                    orderBy: [{date:'desc'},{id:'desc'}], take: 500
+            if (!editorialPending) {
+                editorialPending = (async () => {
+                    const now = Date.now();
+                    const rows = await prisma.article.findMany({
+                        where: {
+                            date: { gte: new Date(now - 2 * 86400000), lte: new Date(now) },
+                            AND: [
+                                { OR: [{ category: null }, { category: { not: 'Spam' } }] },
+                                ...buildBreachExclusionWhere().AND
+                            ]
+                        },
+                        select: {
+                            id: true,
+                            title: true,
+                            link: true,
+                            date: true,
+                            image: true,
+                            category: true,
+                            sourceId: true,
+                            source: { select: { name: true, category: true } }
+                        },
+                        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+                        take: 500
+                    });
+                    editorialCache = { at: now, payload: buildEditorial(rows, now) };
+                })().finally(() => {
+                    editorialPending = null;
                 });
-                editorialCache = { at:now, payload:buildEditorial(rows,now) };
-            })().finally(() => { editorialPending = null; });
+            }
             await editorialPending;
         }
         res.json(repairMojibakeDeep(editorialCache.payload));
     } catch (error) {
-        console.error('Editorial analysis failed:',error);
-        res.status(503).json({error:'Analyse éditoriale indisponible.'});
+        console.error('Editorial analysis failed:', error);
+        res.status(503).json({ error: 'Analyse éditoriale indisponible.' });
     }
 });
 
-router.get('/article-sources', async (req,res) => {
+router.get('/article-sources', async (req, res) => {
     try {
         const sources = await prisma.source.findMany({
-            where: { category:{notIn:[...BREACH_CATEGORY_VALUES]}, articles:{some:{}} },
-            select:{id:true,name:true}, orderBy:{name:'asc'}
+            where: {
+                category: { notIn: [...BREACH_CATEGORY_VALUES] },
+                articles: { some: {} }
+            },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' }
         });
         res.json(repairMojibakeDeep(sources));
-    } catch (error) { console.error('Public source list failed:',error); res.status(503).json({error:'Sources indisponibles.'}); }
+    } catch (error) {
+        console.error('Public source list failed:', error);
+        res.status(503).json({ error: 'Sources indisponibles.' });
+    }
 });
 
-router.get('/cyber/kev', async (req,res)=>{
+router.get('/cyber/kev', async (req, res) => {
     try {
-        const catalog=await getCatalog();
-        const search=normalizeInput(req.query.search,120).toLowerCase();
-        const entries=catalog.entries.filter(v=>!search||[v.cve,v.vendor,v.product,v.name].some(x=>x.toLowerCase().includes(search)));
-        const page=Math.min(parsePositiveInt(req.query.page,1),10000);
-        const {entries:all,...meta}=catalog;
-        res.json({data:entries.slice((page-1)*30,page*30),meta:{...meta,total:entries.length,catalogSize:all.length,page,pages:Math.ceil(entries.length/30)}});
-    } catch(error) {console.error('KEV unavailable:',error.message);res.status(503).json({error:'Catalogue CISA indisponible.'});}
-});
-router.get('/cyber/cert', async (req,res)=>{
-    try {
-        const rows=await prisma.article.findMany({
-            where:{source:{name:{startsWith:'CERT-FR'}},date:{lte:new Date()},OR:[{category:null},{category:{not:'Spam'}}]},
-            orderBy:[{date:'desc'},{id:'desc'}],take:40,
-            select:{id:true,title:true,link:true,date:true,content:true,source:{select:{name:true}}}
+        const catalog = await getCatalog();
+        const search = normalizeInput(req.query.search, 120).toLowerCase();
+        const onlyRansomware = req.query.ransomware === 'known';
+        const ransomwareTotal = catalog.entries.filter((entry) => entry.ransomware === 'Known').length;
+
+        const entries = catalog.entries.filter((vuln) => {
+            if (onlyRansomware && vuln.ransomware !== 'Known') {
+                return false;
+            }
+            if (!search) {
+                return true;
+            }
+            return [vuln.cve, vuln.vendor, vuln.product, vuln.name].some((field) =>
+                field.toLowerCase().includes(search)
+            );
         });
-        res.json(repairMojibakeDeep(rows.map(({content,...a})=>({...a,cves:[...new Set((a.title+' '+(content||'')).match(/\bCVE-\d{4}-\d{4,}\b/gi)||[])].map(v=>v.toUpperCase()).slice(0,20)}))));
-    }catch(error){console.error('CERT feed unavailable:',error.message);res.status(503).json({error:'Flux CERT-FR indisponible.'});}
+
+        const page = Math.min(parsePositiveInt(req.query.page, 1), 10000);
+        const pageSize = 30;
+        const { entries: allEntries, ...meta } = catalog;
+
+        res.json({
+            data: entries.slice((page - 1) * pageSize, page * pageSize),
+            meta: {
+                ...meta,
+                total: entries.length,
+                catalogSize: allEntries.length,
+                ransomwareTotal,
+                page,
+                pages: Math.ceil(entries.length / pageSize)
+            }
+        });
+    } catch (error) {
+        console.error('KEV unavailable:', error.message);
+        res.status(503).json({ error: 'Catalogue CISA indisponible.' });
+    }
 });
 
-router.get('/source-observatory',async (req,res)=>{
+router.get('/cyber/cert', async (req, res) => {
     try {
-        const cutoff=new Date(Date.now()-7*86400000);
-        const sources=await prisma.source.findMany({select:{id:true,name:true,category:true,isActive:true,lastFetched:true,consecutiveFailures:true}});
-        const counts=await prisma.article.groupBy({by:['sourceId'],where:{date:{gte:cutoff,lte:new Date()},OR:[{category:null},{category:{not:'Spam'}}]},_count:{_all:true},_max:{date:true}});
-        const index=new Map(counts.map(c=>[c.sourceId,c]));
-        res.json(repairMojibakeDeep(sources.map(s=>({...s,articles7d:index.get(s.id)?._count._all||0,lastArticle:index.get(s.id)?._max.date||null})).sort((a,b)=>b.articles7d-a.articles7d||a.name.localeCompare(b.name))));
-    } catch(error) {console.error('Observatory failed:',error);res.status(503).json({error:'Observatoire indisponible.'});}
+        const search = normalizeInput(req.query.search, 120).toLowerCase();
+        const rows = await prisma.article.findMany({
+            where: {
+                source: { name: { startsWith: 'CERT-FR' } },
+                date: { lte: new Date() },
+                OR: [{ category: null }, { category: { not: 'Spam' } }]
+            },
+            orderBy: [{ date: 'desc' }, { id: 'desc' }],
+            take: 40,
+            select: {
+                id: true,
+                title: true,
+                link: true,
+                date: true,
+                content: true,
+                source: { select: { name: true } }
+            }
+        });
+
+        // Cross-reference against already-cached KEV CVEs without adding external latency.
+        const kevCveSet = typeof getCatalog.getCachedCveSet === 'function' ? getCatalog.getCachedCveSet() : new Set();
+
+        const formatted = rows
+            .map(({ content, ...article }) => {
+                const cves = [
+                    ...new Set(
+                        (`${article.title} ${content || ''}`).match(/\bCVE-\d{4}-\d{4,}\b/gi) || []
+                    )
+                ]
+                    .map((cve) => cve.toUpperCase())
+                    .slice(0, 20);
+                const kevMatches = cves.filter((cve) => kevCveSet.has(cve));
+                return { ...article, cves, kevMatches };
+            })
+            .filter((article) => {
+                if (!search) return true;
+                return (
+                    article.title.toLowerCase().includes(search) ||
+                    article.cves.some((cve) => cve.toLowerCase().includes(search))
+                );
+            });
+
+        res.json(repairMojibakeDeep(formatted));
+    } catch (error) {
+        console.error('CERT feed unavailable:', error.message);
+        res.status(503).json({ error: 'Flux CERT-FR indisponible.' });
+    }
+});
+
+router.get('/source-observatory', async (req, res) => {
+    try {
+        const now = new Date();
+        const cutoff = new Date(now.getTime() - 7 * 86400000);
+        const sources = await prisma.source.findMany({
+            select: {
+                id: true,
+                name: true,
+                category: true,
+                isActive: true,
+                lastFetched: true,
+                cooldownUntil: true,
+                consecutiveFailures: true
+            }
+        });
+        const counts = await prisma.article.groupBy({
+            by: ['sourceId'],
+            where: {
+                date: { gte: cutoff, lte: now },
+                OR: [{ category: null }, { category: { not: 'Spam' } }]
+            },
+            _count: { _all: true },
+            _max: { date: true }
+        });
+        const index = new Map(counts.map((item) => [item.sourceId, item]));
+        const payload = sources
+            .map(({ cooldownUntil, ...source }) => ({
+                ...source,
+                isCoolingDown: Boolean(cooldownUntil && new Date(cooldownUntil) > now),
+                articles7d: index.get(source.id)?._count._all || 0,
+                lastArticle: index.get(source.id)?._max.date || null
+            }))
+            .sort((a, b) => b.articles7d - a.articles7d || a.name.localeCompare(b.name));
+
+        res.json(repairMojibakeDeep(payload));
+    } catch (error) {
+        console.error('Observatory failed:', error);
+        res.status(503).json({ error: 'Observatoire indisponible.' });
+    }
 });
 
 // Source administration is intentionally protected as it exposes feed URLs and changes global data.
@@ -708,7 +835,9 @@ async function buildDailyBrief(dateKey) {
         const briefs = [];
         const activeCategories = Object.keys(groups).filter(c => groups[c].length > 0);
 
-        // Process sequentially to avoid hitting rate limits too hard
+        // Process sequentially to avoid hitting rate limits too hard.
+        // Isolate per-category failures so one invalid LLM output does not abort the full edition.
+        let lastCategoryError = null;
         for (const cat of activeCategories) {
             const catArticles = groups[cat];
 
@@ -716,23 +845,31 @@ async function buildDailyBrief(dateKey) {
             const heroArticle = catArticles.find(a => a.image) || catArticles[0];
             const heroImage = heroArticle ? heroArticle.image : null;
 
-            // Generate summary
-            const summary = await generateCategoryBrief(cat, catArticles);
+            try {
+                const summary = await generateCategoryBrief(cat, catArticles);
 
-            briefs.push({
-                category: cat,
-                summary: summary,
-                articleCount: catArticles.length,
-                heroImage: heroImage,
-                // Same order as the numbered list given to the model: [n] -> topArticles[n - 1]
-                topArticles: catArticles.slice(0, BRIEF_SOURCE_LIMIT).map(a => ({
-                    id: a.id,
-                    title: a.title,
-                    link: a.link,
-                    date: a.date,
-                    source: a.source ? { name: a.source.name } : null
-                }))
-            });
+                briefs.push({
+                    category: cat,
+                    summary: summary,
+                    articleCount: catArticles.length,
+                    heroImage: heroImage,
+                    // Same order as the numbered list given to the model: [n] -> topArticles[n - 1]
+                    topArticles: catArticles.slice(0, BRIEF_SOURCE_LIMIT).map(a => ({
+                        id: a.id,
+                        title: a.title,
+                        link: a.link,
+                        date: a.date,
+                        source: a.source ? { name: a.source.name } : null
+                    }))
+                });
+            } catch (error) {
+                lastCategoryError = error;
+                console.error(`Skipping daily brief category "${cat}":`, error.message);
+            }
+        }
+
+        if (briefs.length === 0) {
+            throw lastCategoryError || new Error('Daily brief generation failed for all categories');
         }
 
         await prisma.dailyBrief.upsert({
@@ -743,24 +880,36 @@ async function buildDailyBrief(dateKey) {
 
         return briefs;
 }
+
 function parisDateKey() {
-    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-    const part = type => parts.find(p => p.type === type).value;
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Paris',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+    const part = (type) => parts.find((item) => item.type === type).value;
     return [part('year'), part('month'), part('day')].join('-');
 }
+
 function requestDailyBrief(dateKey = parisDateKey()) {
     let pending = pendingBriefs.get(dateKey);
     if (!pending && Date.now() >= nextBriefAttemptAt) {
-        pending = buildDailyBrief(dateKey).catch(error => {
-            nextBriefAttemptAt = Date.now() + 60000;
-            throw error;
-        }).finally(() => pendingBriefs.delete(dateKey));
+        pending = buildDailyBrief(dateKey)
+            .catch((error) => {
+                nextBriefAttemptAt = Date.now() + 60000;
+                throw error;
+            })
+            .finally(() => {
+                pendingBriefs.delete(dateKey);
+            });
         pendingBriefs.set(dateKey, pending);
     }
     return pending || Promise.reject(new Error('brief_retry_cooldown'));
 }
-router.get('/daily-brief', limitSummarization, async (req,res) => {
-    const dateKey=parisDateKey();
+
+router.get('/daily-brief', limitSummarization, async (req, res) => {
+    const dateKey = parisDateKey();
     try {
         res.json(await requestDailyBrief(dateKey));
     } catch (error) {
@@ -773,27 +922,55 @@ router.get('/daily-brief', limitSummarization, async (req,res) => {
                     res.set('X-Brief-Stale', 'true');
                     return res.json(repairMojibakeDeep(parsed));
                 }
-            } catch { /* invalid cache */ }
+            } catch {
+                // Invalid cached payload
+            }
         }
         res.status(503).json({ error: 'Brief temporairement indisponible.' });
     }
 });
 
-router.get('/brief-archive',async(req,res)=>{
+router.get('/brief-archive', async (req, res) => {
     try {
-        const rows=await prisma.dailyBrief.findMany({orderBy:{dateKey:'desc'},take:90,select:{dateKey:true,updatedAt:true,payload:true}});
-        res.json(rows.filter(r=>{try{return cachedBriefValid(JSON.parse(r.payload));}catch{return false;}}).map(({dateKey,updatedAt})=>({dateKey,updatedAt})));
-    }catch(error){console.error('Brief archive failed:',error);res.status(503).json({error:'Archives indisponibles.'});}
+        const rows = await prisma.dailyBrief.findMany({
+            orderBy: { dateKey: 'desc' },
+            take: 90,
+            select: { dateKey: true, updatedAt: true, payload: true }
+        });
+        const valid = rows
+            .filter((row) => {
+                try {
+                    return cachedBriefValid(JSON.parse(row.payload));
+                } catch {
+                    return false;
+                }
+            })
+            .map(({ dateKey, updatedAt }) => ({ dateKey, updatedAt }));
+        res.json(valid);
+    } catch (error) {
+        console.error('Brief archive failed:', error);
+        res.status(503).json({ error: 'Archives indisponibles.' });
+    }
 });
-router.get('/brief-archive/:date',async(req,res)=>{
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date))return res.status(400).json({error:'Date invalide.'});
+
+router.get('/brief-archive/:date', async (req, res) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) {
+        return res.status(400).json({ error: 'Date invalide.' });
+    }
     try {
-        const row=await prisma.dailyBrief.findUnique({where:{dateKey:req.params.date}});
-        if(!row)return res.status(404).json({error:'Édition introuvable.'});
-        const briefs=JSON.parse(row.payload);
-        if(!cachedBriefValid(briefs))return res.status(404).json({error:'Édition indisponible.'});
+        const row = await prisma.dailyBrief.findUnique({ where: { dateKey: req.params.date } });
+        if (!row) {
+            return res.status(404).json({ error: 'Édition introuvable.' });
+        }
+        const briefs = JSON.parse(row.payload);
+        if (!cachedBriefValid(briefs)) {
+            return res.status(404).json({ error: 'Édition indisponible.' });
+        }
         res.json(repairMojibakeDeep(briefs));
-    }catch(error){console.error('Brief edition failed:',error);res.status(503).json({error:'Édition indisponible.'});}
+    } catch (error) {
+        console.error('Brief edition failed:', error);
+        res.status(503).json({ error: 'Édition indisponible.' });
+    }
 });
 
 // GET /videos - Curated tech/IA videos from trusted channels
