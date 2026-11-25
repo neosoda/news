@@ -51,6 +51,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
             case '/videos': return 'Vidéos IA & Tech';
             case '/breaches': return 'Fuites de données';
             case '/sources': return 'Sources RSS';
+            case '/observatory': return 'Observatoire des sources';
             case '/bookmarks': return 'Articles favoris';
             default: return 'Actualités';
         }
@@ -92,6 +93,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                     <NavItem to="/cyber" icon={ShieldAlert} onClick={closeSidebar}>Cyber Radar</NavItem>
                     <NavItem to="/breaches" icon={ShieldAlert} onClick={closeSidebar}>Fuites de données</NavItem>
                     <NavItem to="/bookmarks" icon={Bookmark} onClick={closeSidebar}>Favoris</NavItem>
+                    <NavItem to="/observatory" icon={Rss} onClick={closeSidebar}>Observatoire</NavItem>
                     <NavItem to="/sources" icon={Rss} onClick={closeSidebar}>Sources</NavItem>
                 </nav>
 

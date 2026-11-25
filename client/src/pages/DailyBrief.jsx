@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getDailyBrief } from '../services/api';
+import { getDailyBrief, getBriefArchive, getBriefEdition } from '../services/api';
 import { parseBrief, slugify } from '../services/briefParser';
 import { Calendar, Newspaper, AlertCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
 import { format } from 'date-fns';
@@ -146,12 +146,14 @@ function BriefSection({ section }) {
 }
 
 export default function DailyBrief() {
-    const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
+    const [edition,setEdition]=useState('');
+    const archive=useQuery({queryKey:['brief-archive'],queryFn:getBriefArchive,staleTime:300000});
+    const today = edition ? format(new Date(edition+'T12:00:00'), 'EEEE d MMMM yyyy', { locale: fr }) : new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'}).format(new Date());
     const formattedDate = today.charAt(0).toUpperCase() + today.slice(1);
 
     const { data: briefResult, isLoading, isError, refetch, isFetching } = useQuery({
-        queryKey: ['daily-brief'],
-        queryFn: getDailyBrief,
+        queryKey: ['daily-brief',edition],
+        queryFn: () => edition ? getBriefEdition(edition) : getDailyBrief(),
         staleTime: 1000 * 60 * 60, // Cache for 1 hour
         refetchOnWindowFocus: false
     });
@@ -171,6 +173,8 @@ export default function DailyBrief() {
                     L'essentiel de l'actualité tech des dernières 24 heures, rubrique par rubrique.
                 </p>
 
+                <label className="block mt-5 text-sm text-secondary">Édition<select value={edition} onChange={e=>setEdition(e.target.value)} className="block mt-2 border theme-input rounded px-3 py-2"><option value="">Aujourd’hui</option>{archive.data?.map(a=><option key={a.dateKey} value={a.dateKey}>{a.dateKey.split('-').reverse().join('/')}</option>)}</select></label>
+                {archive.isError && <p className="text-sm text-muted mt-2">Archives momentanément indisponibles.</p>}
                 {briefs?.length > 0 && (
                     <nav aria-label="Rubriques du brief" className="mt-6">
                         <p className="mb-2 text-xs text-muted">

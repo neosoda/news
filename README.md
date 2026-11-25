@@ -285,3 +285,6 @@ Les logiciels, bibliothèques, contenus et installateurs de tiers restent soumis
 - `/editorial` : rapprochements de titres entre sources, tendances mesurées sur deux fenêtres de 24 h (échantillon maximal de 500 articles), sans génération IA.
 - `/` : recherche multi-termes, filtres de source et de période partageables par URL, suivi local de 20 recherches.
 - `/cyber` : catalogue officiel CISA KEV (cache une heure, repli sur le miroir officiel et dernier cache valide) et publications CERT-FR issues du moteur RSS existant. Les échéances CISA sont américaines, pas des obligations locales. Aucune évaluation automatique du risque de votre parc.
+
+- `/observatory` : activité et fraîcheur des sources, sans exposer les URL de collecte ni les erreurs internes.
+- `/daily-brief` : sélection des éditions archivées ; validation structurelle des références numériques pour les nouvelles synthèses (ne constitue pas une vérification factuelle).

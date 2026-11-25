@@ -9,6 +9,7 @@ import Videos from './pages/Videos';
 import Breaches from './pages/Breaches';
 import Editorial from './pages/Editorial';
 import CyberRadar from './pages/CyberRadar';
+import SourceObservatory from './pages/SourceObservatory';
 
 const THEME_STORAGE_KEY = 'newsai-theme';
 const DEFAULT_THEME = 'dark';
@@ -58,6 +59,7 @@ function App() {
         <Route path="/videos" element={<Videos search={search} />} />
         <Route path="/breaches" element={<Breaches search={search} />} />
         <Route path="/bookmarks" element={<Bookmarks />} />
+        <Route path="/observatory" element={<SourceObservatory />} />
         <Route path="/sources" element={<Sources />} />
       </Routes>
     </Layout>

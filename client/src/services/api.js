@@ -123,3 +123,7 @@ export const getArticleSources = async () => (await api.get('/article-sources'))
 
 export const getKev = async (search='',page=1) => (await api.get('/cyber/kev',{params:{search,page}})).data;
 export const getCert = async () => (await api.get('/cyber/cert')).data;
+
+export const getBriefArchive = async () => (await api.get('/brief-archive')).data;
+export const getBriefEdition = async date => ({briefs:(await api.get('/brief-archive/'+encodeURIComponent(date))).data,stale:false});
+export const getSourceObservatory = async () => (await api.get('/source-observatory')).data;
