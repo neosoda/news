@@ -108,9 +108,24 @@ export default function Sources() {
         queryKey: ['sources-health'],
         queryFn: getSourcesHealth,
         enabled: hasAccess,
-        refetchInterval: hasAccess ? 30000 : false,
+        refetchInterval: (query) => {
+            const status = query.state.error?.response?.status;
+            if ([401, 403, 503].includes(status)) return false;
+            return hasAccess ? 30000 : false;
+        },
         retry: false
     });
+
+    const authorizationFailed = hasAccess && [401, 403, 503].includes(sourceQuery.error?.response?.status);
+
+    React.useEffect(() => {
+        if (!authorizationFailed) return;
+        const message = errorMessage(sourceQuery.error, 'Accès administrateur refusé.');
+        clearAdminToken();
+        queryClient.removeQueries({ queryKey: ['sources-health'] });
+        setAccessError(message);
+        setHasAccess(false);
+    }, [authorizationFailed, sourceQuery.error, queryClient]);
 
     const invalidate = () => {
         queryClient.invalidateQueries({ queryKey: ['sources-health'] });
@@ -149,7 +164,6 @@ export default function Sources() {
         setHasAccess(false);
     };
 
-    const authorizationFailed = hasAccess && [401, 403, 503].includes(sourceQuery.error?.response?.status);
     if (!hasAccess || authorizationFailed) {
         return (
             <AdminGate

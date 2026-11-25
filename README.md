@@ -150,7 +150,7 @@ Le conteneur initialise Prisma/SQLite et charge les sources par défaut au déma
 
 <br />
 
-Prévoir **Node.js 20+**, npm et un accès réseau vers les fournisseurs configurés.
+Prévoir **Node.js 22+**, npm et un accès réseau vers les fournisseurs configurés.
 
 Dans un premier terminal :
 
@@ -195,7 +195,7 @@ Un backend chargé de la collecte et des traitements, un frontend léger centré
 | Couche | Technologies | Rôle |
 |---|---|---|
 | **Interface** | React 19, Vite 7, Tailwind CSS, TanStack Query | Lecture, recherche, navigation, briefs, favoris et administration. |
-| **API** | Node.js 20, Express 5 | Endpoints, accès aux données et contrôle des requêtes. |
+| **API** | Node.js 22, Express 5 | Endpoints, accès aux données et contrôle des requêtes. |
 | **Veille** | rss-parser, node-cron, Cheerio | Ingestion, nettoyage, enrichissement et planification des flux. |
 | **Données** | SQLite, Prisma 5 | Articles, sources, favoris et cache des briefs. |
 | **IA / traduction** | Groq, Mistral, OpenRouter, LibreTranslate | Synthèse, catégorisation et traduction avec stratégies de repli. |

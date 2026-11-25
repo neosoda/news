@@ -1,4 +1,4 @@
-import { useDeferredValue, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     AlertTriangle,
@@ -20,6 +20,7 @@ export default function CyberRadar() {
     const [onlyRansomware, setOnlyRansomware] = useState(false);
     const [page, setPage] = useState(1);
     const deferredSearch = useDeferredValue(search);
+    const syncedKevFetchRef = useRef(null);
 
     const kev = useQuery({
         queryKey: ['kev', deferredSearch, page, onlyRansomware],
@@ -32,6 +33,14 @@ export default function CyberRadar() {
         queryFn: () => getCert(),
         staleTime: 300000
     });
+
+    const kevFetchedAt = kev.data?.meta?.fetchedAt;
+    useEffect(() => {
+        if (!kevFetchedAt || syncedKevFetchRef.current === kevFetchedAt) return;
+        syncedKevFetchRef.current = kevFetchedAt;
+        // On a cold server, /cyber/cert may resolve before KEV populates its in-memory CVE set.
+        queryClient.invalidateQueries({ queryKey: ['cert'] });
+    }, [kevFetchedAt, queryClient]);
 
     const meta = kev.data?.meta;
     const kevCveOnPage = new Set((kev.data?.data || []).map((item) => item.cve));

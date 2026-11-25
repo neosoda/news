@@ -16,8 +16,22 @@ test('SSRF protection blocks loopback IPv6 destinations', async () => {
     assert.equal(result.reason, 'private_address_blocked');
 });
 
-test('rejects mapped IPv4, non-global IPv6 and URL credentials', async () => {
-    for (const url of ['http://[::ffff:127.0.0.1]/', 'http://[::ffff:a00:1]/', 'http://[ff02::1]/', 'http://[2002:a00:1::1]/', 'https://user:pass@example.com/']) {
+test('rejects mapped IPv4, non-global IPv6, Teredo, trailing-dot local hosts, and URL credentials', async () => {
+    for (const url of [
+        'http://[::ffff:127.0.0.1]/',
+        'http://[::ffff:a00:1]/',
+        'http://[ff02::1]/',
+        'http://[2002:a00:1::1]/',
+        'http://[2001:0000::1]/',
+        'http://[2001::1]/',
+        'http://[2001:2::1]/',
+        'http://[2001:10::1]/',
+        'http://[2001:20::1]/',
+        'http://[2001:db8::1]/',
+        'http://localhost./',
+        'http://internal.local./',
+        'https://user:pass@example.com/'
+    ]) {
         assert.equal((await validateOutboundHttpUrl(url, { resolveDns: false })).ok, false, url);
     }
     assert.equal((await validateOutboundHttpUrl('https://[2606:4700::1111]/')).ok, true);

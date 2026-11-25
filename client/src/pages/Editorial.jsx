@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { ArrowUpRight, Layers, TrendingUp, RefreshCw } from 'lucide-react';
 import { getEditorial } from '../services/api';
 import { recordOpened } from '../services/readerPreferences';
@@ -7,11 +8,21 @@ import { safeHttpUrl, formatDateTime, formatShortDate } from '../utils/url';
 
 export default function Editorial() {
     const queryClient = useQueryClient();
+    const location = useLocation();
     const { data, isPending, isError, refetch } = useQuery({
         queryKey: ['editorial'],
         queryFn: getEditorial,
         staleTime: 300000
     });
+
+    useEffect(() => {
+        if (!location.hash || !data?.topics?.length) return;
+        const targetId = location.hash.slice(1);
+        const element = document.getElementById(targetId);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [location.hash, data]);
 
     const handleOpenArticle = (article) => {
         try {

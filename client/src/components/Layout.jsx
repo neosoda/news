@@ -147,7 +147,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                     <Link
                         to="/"
                         onClick={closeSidebar}
-                        className="flex items-center gap-3 rounded-lg py-1 pr-2 focus-visible:outline-none"
+                        className="flex items-center gap-3 rounded-lg py-1 pr-2"
                     >
                         <div className="flex h-9 w-9 items-center justify-center rounded-lg border theme-border surface-muted text-accent">
                             <Newspaper size={19} aria-hidden="true" />

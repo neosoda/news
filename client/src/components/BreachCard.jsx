@@ -103,9 +103,9 @@ export default function BreachCard({ article }) {
                         article.title
                     )}
                 </h3>
-                <p className="mt-2.5 line-clamp-3 text-sm leading-6 text-secondary">{summary}</p>
+                <p className="mt-2.5 mb-4 line-clamp-3 text-sm leading-6 text-secondary">{summary}</p>
 
-                <div className="mt-auto flex items-center justify-between border-t theme-border pt-3.5 mt-4">
+                <div className="mt-auto flex items-center justify-between border-t theme-border pt-3.5">
                     <span className="rounded-md border theme-border surface-muted px-2 py-0.5 text-[11px] font-medium text-secondary">
                         Fuite de données
                     </span>

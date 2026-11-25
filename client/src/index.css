@@ -64,7 +64,8 @@
   }
 
   :root[data-theme='light'] .text-red-200,
-  :root[data-theme='light'] .text-red-300 {
+  :root[data-theme='light'] .text-red-300,
+  :root[data-theme='light'] .hover\:text-red-300:hover {
     color: #b91c1c;
   }
 

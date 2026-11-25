@@ -32,7 +32,22 @@ async function main() {
     );
     assert.ok(bin, 'Chromium or Google Chrome is required');
 
-    const app = spawn(process.execPath, [join(__dirname, 'browser-fixture.js')], { stdio: 'inherit' });
+    const fixtureEnv = { ...process.env };
+    if (!fixtureEnv.SQLITE_URL) {
+        fixtureEnv.SQLITE_URL = `file:${join(dir, 'fixture.db').replace(/\\/g, '/')}`;
+        const serverDir = join(__dirname, '..');
+        const push = spawnSync('npx', ['prisma', 'db', 'push', '--skip-generate'], {
+            cwd: serverDir,
+            env: fixtureEnv,
+            stdio: 'inherit'
+        });
+        assert.equal(push.status, 0, 'Failed to initialize isolated fixture SQLite database');
+    }
+
+    const app = spawn(process.execPath, [join(__dirname, 'browser-fixture.js')], {
+        env: fixtureEnv,
+        stdio: 'inherit'
+    });
     const chrome = spawn(
         bin,
         [

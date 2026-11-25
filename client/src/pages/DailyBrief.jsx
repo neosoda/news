@@ -165,7 +165,16 @@ function BriefSection({ section, onOpenArticle }) {
                                                 <span className="min-w-0">
                                                     <span className="block text-sm font-medium leading-snug text-primary line-clamp-2 group-hover:text-accent">{article.title}</span>
                                                     <span className="mt-1 block text-xs text-secondary opacity-80">
-                                                        {[sourceName(article), article.date && format(new Date(article.date), "d MMM, HH'h'mm", { locale: fr })].filter(Boolean).join(' · ')}
+                                                        {[
+                                                            sourceName(article),
+                                                            (() => {
+                                                                if (!article.date) return null;
+                                                                const parsed = new Date(article.date);
+                                                                return Number.isFinite(parsed.getTime())
+                                                                    ? format(parsed, "d MMM, HH'h'mm", { locale: fr })
+                                                                    : null;
+                                                            })()
+                                                        ].filter(Boolean).join(' · ')}
                                                     </span>
                                                 </span>
                                                 <ArrowUpRight size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-accent" />
