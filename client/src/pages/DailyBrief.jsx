@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDailyBrief, getBriefArchive, getBriefEdition } from '../services/api';
 import { parseBrief, slugify } from '../services/briefParser';
-import { Calendar, Newspaper, AlertCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { recordOpened } from '../services/readerPreferences';
+import { safeHttpUrl } from '../utils/url';
+import { Calendar, Newspaper, AlertCircle, RefreshCw, ArrowUpRight, Archive } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -20,7 +22,11 @@ function Inline({ text }) {
         }
         const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
         if (link) {
-            return <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" className="brief-link">{link[1]}</a>;
+            const safeUrl = safeHttpUrl(link[2]);
+            if (safeUrl) {
+                return <a key={i} href={safeUrl} target="_blank" rel="noopener noreferrer" className="brief-link">{link[1]}</a>;
+            }
+            return <React.Fragment key={i}>{link[1]}</React.Fragment>;
         }
         if (/^([*_]).+\1$/.test(part)) {
             return <em key={i}>{part.slice(1, -1)}</em>;
@@ -50,7 +56,18 @@ function sourceName(article) {
     })();
 }
 
-function BriefSection({ section }) {
+function todayParisKey() {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Paris',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+    const part = (type) => parts.find((item) => item.type === type)?.value;
+    return [part('year'), part('month'), part('day')].join('-');
+}
+
+function BriefSection({ section, onOpenArticle }) {
     const brief = useMemo(() => parseBrief(section.summary, section.category), [section.summary, section.category]);
     const articles = section.topArticles || [];
     const slug = slugify(section.category);
@@ -68,7 +85,9 @@ function BriefSection({ section }) {
         <article id={slug} aria-labelledby={`${slug}-title`} className="scroll-mt-24 border-t theme-border pt-8 md:pt-10 lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-12">
             <div className="mb-4 flex items-baseline justify-between gap-4 lg:mb-0 lg:block">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-accent">{section.category}</p>
-                <p className="text-xs text-secondary lg:mt-2">{section.articleCount} article{section.articleCount > 1 ? 's' : ''} analysé{section.articleCount > 1 ? 's' : ''}</p>
+                <p className="text-xs text-secondary lg:mt-2">
+                    {section.articleCount} article{section.articleCount > 1 ? 's' : ''} analysé{section.articleCount > 1 ? 's' : ''}
+                </p>
             </div>
 
             <div className="min-w-0 max-w-[44rem]">
@@ -93,22 +112,29 @@ function BriefSection({ section }) {
                                     <div className="space-y-3 text-[1.0625rem] leading-[1.7] text-secondary text-pretty">
                                         <Blocks blocks={point.blocks} />
                                     </div>
-                                    {point.cites.some((n) => articles[n - 1]) && (
+                                    {point.cites.some((n) => safeHttpUrl(articles[n - 1]?.link)) && (
                                         <p className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-secondary">
                                             <span>Sources</span>
-                                            {point.cites.filter((n) => articles[n - 1]).map((n) => (
-                                                <a
-                                                    key={n}
-                                                    href={articles[n - 1].link}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    title={articles[n - 1].title}
-                                                    aria-label={`Source ${n} : ${articles[n - 1].title}`}
-                                                    className="brief-cite"
-                                                >
-                                                    {n}
-                                                </a>
-                                            ))}
+                                            {point.cites
+                                                .filter((n) => safeHttpUrl(articles[n - 1]?.link))
+                                                .map((n) => {
+                                                    const refArticle = articles[n - 1];
+                                                    const href = safeHttpUrl(refArticle.link);
+                                                    return (
+                                                        <a
+                                                            key={n}
+                                                            href={href}
+                                                            onClick={() => onOpenArticle(refArticle)}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            title={refArticle.title}
+                                                            aria-label={`Source ${n} : ${refArticle.title}`}
+                                                            className="brief-cite"
+                                                        >
+                                                            {n}
+                                                        </a>
+                                                    );
+                                                })}
                                         </p>
                                     )}
                                 </div>
@@ -123,20 +149,36 @@ function BriefSection({ section }) {
                             {cited.length ? 'Sources citées' : 'Articles de la rubrique'}
                         </h4>
                         <ol className="grid gap-x-8 sm:grid-cols-2">
-                            {sources.map(({ n, article }) => (
-                                <li key={article.id || n}>
-                                    <a href={article.link} target="_blank" rel="noopener noreferrer" className="brief-source group">
-                                        <span className="font-mono text-xs tabular-nums text-muted">{n}</span>
-                                        <span className="min-w-0">
-                                            <span className="block text-sm font-medium leading-snug text-primary line-clamp-2 group-hover:text-accent">{article.title}</span>
-                                            <span className="mt-1 block text-xs text-secondary opacity-80">
-                                                {[sourceName(article), article.date && format(new Date(article.date), "d MMM, HH'h'mm", { locale: fr })].filter(Boolean).join(' · ')}
-                                            </span>
-                                        </span>
-                                        <ArrowUpRight size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-accent" />
-                                    </a>
-                                </li>
-                            ))}
+                            {sources.map(({ n, article }) => {
+                                const href = safeHttpUrl(article.link);
+                                return (
+                                    <li key={article.id || n}>
+                                        {href ? (
+                                            <a
+                                                href={href}
+                                                onClick={() => onOpenArticle(article)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="brief-source group"
+                                            >
+                                                <span className="font-mono text-xs tabular-nums text-muted">{n}</span>
+                                                <span className="min-w-0">
+                                                    <span className="block text-sm font-medium leading-snug text-primary line-clamp-2 group-hover:text-accent">{article.title}</span>
+                                                    <span className="mt-1 block text-xs text-secondary opacity-80">
+                                                        {[sourceName(article), article.date && format(new Date(article.date), "d MMM, HH'h'mm", { locale: fr })].filter(Boolean).join(' · ')}
+                                                    </span>
+                                                </span>
+                                                <ArrowUpRight size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-accent" />
+                                            </a>
+                                        ) : (
+                                            <div className="brief-source">
+                                                <span className="font-mono text-xs tabular-nums text-muted">{n}</span>
+                                                <span className="min-w-0 text-sm font-medium text-primary">{article.title}</span>
+                                            </div>
+                                        )}
+                                    </li>
+                                );
+                            })}
                         </ol>
                     </footer>
                 )}
@@ -146,44 +188,104 @@ function BriefSection({ section }) {
 }
 
 export default function DailyBrief() {
-    const [edition,setEdition]=useState('');
-    const archive=useQuery({queryKey:['brief-archive'],queryFn:getBriefArchive,staleTime:300000});
-    const today = edition ? format(new Date(edition+'T12:00:00'), 'EEEE d MMMM yyyy', { locale: fr }) : new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'}).format(new Date());
-    const formattedDate = today.charAt(0).toUpperCase() + today.slice(1);
+    const queryClient = useQueryClient();
+    const [edition, setEdition] = useState('');
+    const currentParisDate = useMemo(() => todayParisKey(), []);
+
+    const archive = useQuery({
+        queryKey: ['brief-archive'],
+        queryFn: getBriefArchive,
+        staleTime: 300000
+    });
+
+    const archivedEditions = useMemo(
+        () => (archive.data || []).filter((item) => item.dateKey !== currentParisDate),
+        [archive.data, currentParisDate]
+    );
+
+    const todayLabel = edition
+        ? format(new Date(`${edition}T12:00:00`), 'EEEE d MMMM yyyy', { locale: fr })
+        : new Intl.DateTimeFormat('fr-FR', {
+            timeZone: 'Europe/Paris',
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        }).format(new Date());
+    const formattedDate = todayLabel.charAt(0).toUpperCase() + todayLabel.slice(1);
 
     const { data: briefResult, isLoading, isError, refetch, isFetching } = useQuery({
-        queryKey: ['daily-brief',edition],
-        queryFn: () => edition ? getBriefEdition(edition) : getDailyBrief(),
-        staleTime: 1000 * 60 * 60, // Cache for 1 hour
+        queryKey: ['daily-brief', edition],
+        queryFn: () => (edition ? getBriefEdition(edition) : getDailyBrief()),
+        staleTime: 1000 * 60 * 60,
         refetchOnWindowFocus: false
     });
-    const briefs = briefResult?.briefs;
 
+    const briefs = briefResult?.briefs;
     const totalArticles = briefs?.reduce((sum, s) => sum + (s.articleCount || 0), 0) || 0;
+
+    const handleOpenArticle = (article) => {
+        try {
+            queryClient.setQueryData(['reader-history'], recordOpened(article));
+        } catch {
+            // Opening the article must not fail.
+        }
+    };
 
     return (
         <div className="mx-auto max-w-5xl pb-20">
-            <header className="pb-8 pt-6 md:pb-10 md:pt-10">
-                <p className="mb-3 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-accent">
-                    <Calendar size={14} aria-hidden="true" />
-                    {formattedDate}
-                </p>
-                <h1 className="font-serif text-4xl font-semibold tracking-tight text-primary md:text-5xl">Le Brief IA</h1>
-                <p className="mt-3 max-w-2xl text-lg leading-relaxed text-secondary">
-                    L'essentiel de l'actualité tech des dernières 24 heures, rubrique par rubrique.
-                </p>
+            <header className="pb-8 pt-2 md:pb-10">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                        <p className="mb-3 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-accent">
+                            <Calendar size={14} aria-hidden="true" />
+                            {formattedDate}
+                        </p>
+                        <h1 className="font-serif text-4xl font-semibold tracking-tight text-primary md:text-5xl">
+                            Le Brief IA
+                        </h1>
+                        <p className="mt-3 max-w-2xl text-base leading-relaxed text-secondary">
+                            L’essentiel de l’actualité tech des dernières 24 heures, synthétisé rubrique par rubrique avec renvois vers les sources.
+                        </p>
+                    </div>
 
-                <label className="block mt-5 text-sm text-secondary">Édition<select value={edition} onChange={e=>setEdition(e.target.value)} className="block mt-2 border theme-input rounded px-3 py-2"><option value="">Aujourd’hui</option>{archive.data?.map(a=><option key={a.dateKey} value={a.dateKey}>{a.dateKey.split('-').reverse().join('/')}</option>)}</select></label>
-                {archive.isError && <p className="text-sm text-muted mt-2">Archives momentanément indisponibles.</p>}
+                    <div className="shrink-0">
+                        <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                            <span className="inline-flex items-center gap-1.5">
+                                <Archive size={12} aria-hidden="true" />
+                                Édition
+                            </span>
+                            <select
+                                value={edition}
+                                onChange={(event) => setEdition(event.target.value)}
+                                className="block mt-1.5 theme-input rounded-lg px-3 py-2 text-sm min-w-[11rem]"
+                            >
+                                <option value="">Aujourd’hui</option>
+                                {archivedEditions.map((item) => (
+                                    <option key={item.dateKey} value={item.dateKey}>
+                                        {item.dateKey.split('-').reverse().join('/')}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        {archive.isError && (
+                            <p className="text-xs text-muted mt-1.5">Archives momentanément indisponibles.</p>
+                        )}
+                    </div>
+                </div>
+
                 {briefs?.length > 0 && (
                     <nav aria-label="Rubriques du brief" className="mt-6">
-                        <p className="mb-2 text-xs text-muted">
-                            {briefs.length} rubrique{briefs.length > 1 ? 's' : ''} · {totalArticles} articles analysés
+                        <p className="mb-2.5 text-xs text-muted tabular-nums">
+                            {briefs.length} rubrique{briefs.length > 1 ? 's' : ''} · {totalArticles} article{totalArticles > 1 ? 's' : ''} analysé{totalArticles > 1 ? 's' : ''}
                         </p>
                         <ul className="flex flex-wrap gap-2">
                             {briefs.map((section) => (
                                 <li key={section.category}>
-                                    <a href={`#${slugify(section.category)}`} className="news-chip inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40">
+                                    <a
+                                        href={`#${slugify(section.category)}`}
+                                        className="news-chip inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium"
+                                    >
                                         {section.category}
                                         <span className="text-xs tabular-nums text-muted">{section.articleCount}</span>
                                     </a>
@@ -194,7 +296,12 @@ export default function DailyBrief() {
                 )}
             </header>
 
-            {briefResult?.stale && <p role="status" className="mb-4 text-sm text-secondary">Dernière édition disponible : actualisation temporairement indisponible.</p>}
+            {briefResult?.stale && (
+                <p role="status" className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                    Dernière édition disponible affichée : l’actualisation IA est temporairement indisponible.
+                </p>
+            )}
+
             {isLoading ? (
                 <div aria-busy="true" aria-label="Chargement du brief" className="space-y-12 border-t theme-border pt-10">
                     {[0, 1].map((i) => (
@@ -208,23 +315,33 @@ export default function DailyBrief() {
                     <p className="text-sm text-muted">Synthèse des articles en cours…</p>
                 </div>
             ) : isError ? (
-                <div role="alert" className="mx-auto max-w-lg rounded-2xl border border-red-500/20 bg-red-500/10 p-8 text-center">
-                    <AlertCircle className="mx-auto mb-4 h-10 w-10 text-red-500" aria-hidden="true" />
-                    <h2 className="mb-2 text-xl font-bold text-primary">Erreur de génération</h2>
-                    <p className="text-red-300">Impossible de créer le brief pour le moment. Veuillez réessayer plus tard.</p>
-                    <button type="button" onClick={() => refetch()} disabled={isFetching} className="mt-5 inline-flex items-center gap-2 rounded-xl border border-red-400/30 px-4 py-2 text-sm font-bold text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-60">
-                        <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} aria-hidden="true" /> Réessayer
+                <div role="alert" className="mx-auto max-w-lg rounded-xl border border-red-500/25 bg-red-500/10 p-8 text-center">
+                    <AlertCircle className="mx-auto mb-4 h-9 w-9 text-red-400" aria-hidden="true" />
+                    <h2 className="mb-2 text-lg font-semibold text-primary">Erreur de génération</h2>
+                    <p className="text-sm text-red-300">Impossible de charger le brief pour le moment. Veuillez réessayer plus tard.</p>
+                    <button
+                        type="button"
+                        onClick={() => refetch()}
+                        disabled={isFetching}
+                        className="editorial-btn mt-5"
+                    >
+                        <RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} aria-hidden="true" />
+                        Réessayer
                     </button>
                 </div>
             ) : (!briefs || briefs.length === 0) ? (
                 <div className="border-t theme-border py-20 text-center text-secondary">
-                    <Newspaper className="mx-auto mb-4 h-12 w-12 opacity-30" aria-hidden="true" />
-                    <p className="text-lg font-medium">Pas assez d'actualités récentes pour générer un brief complet.</p>
+                    <Newspaper className="mx-auto mb-4 h-10 w-10 opacity-35" aria-hidden="true" />
+                    <p className="text-base font-medium">Pas assez d’actualités récentes pour générer un brief complet.</p>
                 </div>
             ) : (
                 <div className="space-y-14 md:space-y-16">
                     {briefs.map((section) => (
-                        <BriefSection key={section.category} section={section} />
+                        <BriefSection
+                            key={section.category}
+                            section={section}
+                            onOpenArticle={handleOpenArticle}
+                        />
                     ))}
                 </div>
             )}

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getVideos } from '../services/api';
+import { safeHttpUrl } from '../utils/url';
 import { Loader2, PlayCircle, AlertCircle, Youtube, X, ExternalLink } from 'lucide-react';
 
 const TOPIC_OPTIONS = [
@@ -10,6 +11,8 @@ const TOPIC_OPTIONS = [
     { label: 'Dev', value: 'dev' },
     { label: 'LLM', value: 'llm' }
 ];
+
+const YOUTUBE_ID_PATTERN = /^[\w-]{6,20}$/;
 
 export default function Videos({ search }) {
     const [selectedTopics, setSelectedTopics] = useState(['ia', 'it', 'tech']);
@@ -25,33 +28,34 @@ export default function Videos({ search }) {
     });
 
     const toggleTopic = (topic) => {
-        setSelectedTopics((current) => {
-            if (current.includes(topic)) {
-                return current.filter((item) => item !== topic);
-            }
-            return [...current, topic];
-        });
+        setSelectedTopics((current) =>
+            current.includes(topic)
+                ? current.filter((item) => item !== topic)
+                : [...current, topic]
+        );
     };
 
     const closePlayer = () => setActiveVideo(null);
 
     const openPlayer = (video) => {
-        const match = video.url?.match(/[?&]v=([\w-]{6,})/);
-        if (!match) {
-            window.open(video.url, '_blank', 'noopener,noreferrer');
+        const safeUrl = safeHttpUrl(video.url);
+        const match = safeUrl?.match(/[?&]v=([\w-]{6,20})/);
+        if (!match || !YOUTUBE_ID_PATTERN.test(match[1])) {
+            if (safeUrl) {
+                window.open(safeUrl, '_blank', 'noopener,noreferrer');
+            }
             return;
         }
 
         setActiveVideo({
             ...video,
+            url: safeUrl,
             videoId: match[1]
         });
     };
 
     React.useEffect(() => {
-        if (!activeVideo) {
-            return undefined;
-        }
+        if (!activeVideo) return undefined;
 
         const onKeyDown = (event) => {
             if (event.key === 'Escape') {
@@ -64,35 +68,39 @@ export default function Videos({ search }) {
     }, [activeVideo]);
 
     return (
-        <div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-10 space-y-4 sm:space-y-0">
+        <div className="space-y-7">
+            <header className="border-b theme-border pb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <div className="flex items-center space-x-2 text-red-500 font-black uppercase tracking-[0.3em] text-[10px] mb-2">
-                        <Youtube size={14} />
-                        <span>Veille vidéo</span>
-                    </div>
-                    <h1 className="text-4xl sm:text-5xl font-black text-primary tracking-tighter">
-                        Vidéos <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500 truncate inline-block">IA & Tech</span>
+                    <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+                        <Youtube size={14} aria-hidden="true" />
+                        Veille vidéo · Chaînes sélectionnées
+                    </p>
+                    <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-primary mt-2">
+                        Vidéos IA & Tech
                     </h1>
+                    <p className="mt-2 text-sm leading-6 text-secondary">
+                        Dernières vidéos francophones et internationales sur l’IA, le développement et l’infrastructure.
+                    </p>
                 </div>
 
-                <div className="surface-muted border theme-border rounded-2xl px-4 py-2 flex items-center space-x-3">
-                    <span className="text-xs font-bold text-secondary uppercase tracking-widest">Résultats</span>
-                    <span className="text-xl font-black text-primary">{data?.meta?.total || 0}</span>
+                <div className="surface-card px-4 py-3 flex items-center gap-3 self-start sm:self-auto">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted">Résultats</span>
+                    <span className="text-xl font-bold text-primary tabular-nums">{data?.meta?.total || 0}</span>
                 </div>
-            </div>
+            </header>
 
-            <div className="mb-8 flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Thèmes vidéo">
                 {TOPIC_OPTIONS.map((topic) => {
                     const isActive = selectedTopics.includes(topic.value);
                     return (
                         <button
                             key={topic.value}
+                            type="button"
+                            aria-pressed={isActive}
                             onClick={() => toggleTopic(topic.value)}
-                            className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 ${isActive
-                                    ? 'bg-gradient-to-r from-red-600 to-orange-600 text-primary shadow-lg shadow-red-900/30'
-                                    : 'surface-muted text-secondary hover:bg-cyan-400/[0.10] hover:text-primary border theme-border'
-                                }`}
+                            className={`px-3.5 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                                isActive ? 'news-chip-active' : 'news-chip'
+                            }`}
                         >
                             {topic.label}
                         </button>
@@ -101,82 +109,100 @@ export default function Videos({ search }) {
             </div>
 
             {isLoading ? (
-                <div className="flex flex-col items-center justify-center min-h-[320px] space-y-4">
-                    <Loader2 className="animate-spin text-red-500" size={48} />
-                    <p className="text-secondary font-medium animate-pulse">Chargement des vidéos...</p>
+                <div role="status" className="flex flex-col items-center justify-center min-h-[280px] space-y-3">
+                    <Loader2 className="animate-spin text-accent" size={32} aria-hidden="true" />
+                    <p className="text-sm text-secondary">Chargement des vidéos…</p>
                 </div>
             ) : isError ? (
-                <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-3xl text-red-400 font-bold flex items-center justify-center space-x-2">
-                    <AlertCircle size={18} />
+                <div role="alert" className="surface-card border-red-500/30 p-6 text-sm text-red-300 flex items-center justify-center gap-2">
+                    <AlertCircle size={18} aria-hidden="true" />
                     <span>Impossible de charger les vidéos pour le moment.</span>
                 </div>
             ) : (data?.data?.length || 0) === 0 ? (
-                <div className="flex flex-col items-center justify-center min-h-[320px] text-muted space-y-3">
-                    <PlayCircle size={48} className="opacity-25" />
-                    <p>Aucune vidéo trouvée avec ces filtres.</p>
+                <div className="surface-card p-12 text-center text-secondary space-y-3">
+                    <PlayCircle size={36} aria-hidden="true" className="mx-auto text-muted opacity-40" />
+                    <p className="text-sm">Aucune vidéo trouvée avec ces filtres.</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {data.data.map((video) => (
-                        <button
-                            key={video.id}
-                            type="button"
-                            onClick={() => openPlayer(video)}
-                            className="group surface-muted border theme-border rounded-2xl overflow-hidden hover:bg-cyan-400/[0.10] hover:border-red-500/30 transition-all"
-                        >
-                            <div className="aspect-video surface-card relative">
-                                {video.thumbnail ? (
-                                    <img src={video.thumbnail} alt={video.title} className="h-full w-full object-cover" loading="lazy" />
-                                ) : (
-                                    <div className="h-full w-full flex items-center justify-center text-muted">
-                                        <PlayCircle size={32} />
-                                    </div>
-                                )}
-                                <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors" />
-                            </div>
-                            <div className="p-4 space-y-2">
-                                <h3 className="text-primary font-semibold line-clamp-2 min-h-[3rem]">{video.title}</h3>
-                                <p className="text-xs text-muted uppercase tracking-wider">{video.channel}</p>
-                                {video.description && (
-                                    <p className="text-sm text-secondary line-clamp-2">{video.description}</p>
-                                )}
-                            </div>
-                        </button>
-                    ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                    {data.data.map((video) => {
+                        const thumbnail = safeHttpUrl(video.thumbnail);
+                        return (
+                            <button
+                                key={video.id}
+                                type="button"
+                                onClick={() => openPlayer(video)}
+                                className="group text-left surface-card surface-card-interactive overflow-hidden flex flex-col"
+                            >
+                                <div className="aspect-video w-full surface-muted relative overflow-hidden border-b theme-border">
+                                    {thumbnail ? (
+                                        <img
+                                            src={thumbnail}
+                                            alt=""
+                                            className="h-full w-full object-cover"
+                                            loading="lazy"
+                                        />
+                                    ) : (
+                                        <div className="h-full w-full flex items-center justify-center text-muted">
+                                            <PlayCircle size={32} aria-hidden="true" />
+                                        </div>
+                                    )}
+                                    <span
+                                        aria-hidden="true"
+                                        className="absolute bottom-2.5 right-2.5 inline-flex items-center gap-1 rounded-md bg-black/75 px-2 py-1 text-[11px] font-semibold text-white"
+                                    >
+                                        <PlayCircle size={12} />
+                                        Lire
+                                    </span>
+                                </div>
+                                <div className="p-4 space-y-2 flex-1 flex flex-col">
+                                    <p className="text-xs font-semibold text-accent">{video.channel}</p>
+                                    <h3 className="text-base font-semibold leading-snug text-primary group-hover:text-accent transition-colors line-clamp-2">
+                                        {video.title}
+                                    </h3>
+                                    {video.description && (
+                                        <p className="text-sm leading-6 text-secondary line-clamp-2">{video.description}</p>
+                                    )}
+                                </div>
+                            </button>
+                        );
+                    })}
                 </div>
             )}
 
             {activeVideo && (
                 <div
-                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm p-4 md:p-8"
+                    className="fixed inset-0 z-50 theme-overlay p-4 md:p-8 flex items-center justify-center"
                     role="dialog"
                     aria-modal="true"
                     aria-label={`Lecture vidéo : ${activeVideo.title}`}
                     onClick={closePlayer}
                 >
                     <div
-                        className="mx-auto mt-8 max-w-5xl bg-[var(--color-surface-raised)] border theme-border rounded-2xl overflow-hidden"
+                        className="w-full max-w-5xl surface-card overflow-hidden"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="flex items-center justify-between px-4 py-3 border-b theme-border">
-                            <h3 className="text-primary font-semibold line-clamp-1">{activeVideo.title}</h3>
-                            <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b theme-border">
+                            <h3 className="text-sm sm:text-base font-semibold text-primary line-clamp-1">
+                                {activeVideo.title}
+                            </h3>
+                            <div className="flex items-center gap-2 shrink-0">
                                 <a
                                     href={activeVideo.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-xs text-secondary hover:text-primary px-2 py-1 rounded-lg border theme-border hover:border-cyan-300/30"
+                                    className="editorial-btn py-1.5 px-2.5 text-xs"
                                 >
-                                    <ExternalLink size={14} />
+                                    <ExternalLink size={13} aria-hidden="true" />
                                     YouTube
                                 </a>
                                 <button
                                     type="button"
                                     onClick={closePlayer}
-                                    className="text-secondary hover:text-primary p-1 rounded-lg border theme-border hover:border-cyan-300/30"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border theme-border text-secondary hover:text-primary"
                                     aria-label="Fermer le lecteur"
                                 >
-                                    <X size={16} />
+                                    <X size={16} aria-hidden="true" />
                                 </button>
                             </div>
                         </div>
