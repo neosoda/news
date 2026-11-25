@@ -281,6 +281,34 @@ test('Daily-brief-shaped query excludes breach articles', async () => {
     assert.ok(ids.includes(techArticle.id), 'tech article must be included');
 });
 
+
+test('reader discovery endpoints use isolated data and hide management fields', async () => {
+    await resetDatabase();
+    const {techSource,breachSource,techArticle}=await seedFixture();
+    await prisma.article.update({where:{id:techArticle.id},data:{date:new Date(),isBookmarked:true}});
+    const server=await listen(buildApp());
+    try {
+        const origin='http://127.0.0.1:'+server.address().port;
+        const get=async path=>{const r=await fetch(origin+path);assert.equal(r.status,200,path);return r.json();};
+        const results=await get('/api/articles?period=24h&sourceId='+techSource.id+'&search=CVE%20critique');
+        assert.equal(results.pagination.total,1);
+        assert.equal(results.data[0].isBookmarked,false);
+        assert.equal(results.data[0].source.url,undefined);
+        const sources=await get('/api/article-sources');
+        assert.ok(sources.some(s=>s.id===techSource.id));
+        assert.ok(!sources.some(s=>s.id===breachSource.id));
+        assert.ok(sources.every(s=>s.url===undefined));
+        const observatory=await get('/api/source-observatory');
+        assert.equal(observatory.find(s=>s.id===techSource.id).articles7d,1);
+        assert.ok(observatory.every(s=>s.url===undefined&&s.lastError===undefined));
+        const editorial=await get('/api/editorial');
+        assert.equal(editorial.sampleSize,1);
+        const archive=await get('/api/brief-archive');
+        assert.ok(Array.isArray(archive));
+        assert.equal((await fetch(origin+'/api/brief-archive/invalid')).status,400);
+    } finally {await closeServer(server);}
+});
+
 test.after(async () => {
     await prisma.$disconnect();
 });
