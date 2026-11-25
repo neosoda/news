@@ -46,8 +46,10 @@ async function main(){
         await nav('/?q=Azure&period=24h');await waitText('Microsoft Azure Kubernetes cluster migration');
         await until(()=>evaluate('!document.querySelector("main section[aria-label=\\\"Actualités\\\"]")?.innerText.includes("Fixture CERT advisory")'),'filtered results');
         await nav('/');await waitText('Microsoft Azure Kubernetes cluster migration');
-        await until(()=>evaluate('Boolean([...document.querySelectorAll("label")].find(x=>x.innerText.trim()==="Fixture Technology"&&x.querySelector("input[type=checkbox]")))'),'source preferences');
-        await evaluate('(()=>{const label=[...document.querySelectorAll("label")].find(x=>x.innerText.trim()==="Fixture Technology"&&x.querySelector("input[type=checkbox]"));label.closest("details").open=true;label.querySelector("input").click();})()');
+        await until(()=>evaluate('Boolean(document.querySelector("main details"))'),'source preferences control');
+        await evaluate('document.querySelector("main details").open=true');
+        await until(()=>evaluate('Boolean([...document.querySelectorAll("label")].find(x=>x.textContent.trim()==="Fixture Technology"&&x.querySelector("input[type=checkbox]")))'),'source preferences');
+        await evaluate('(()=>{const label=[...document.querySelectorAll("label")].find(x=>x.textContent.trim()==="Fixture Technology"&&x.querySelector("input[type=checkbox]"));label.closest("details").open=true;label.querySelector("input").click();})()');
         await until(()=>evaluate('JSON.parse(localStorage.getItem("newsai-hidden-sources-v1")||"[]").length===1 && !document.querySelector("main section[aria-label=\\\"Actualités\\\"] a[href=\\\"https://example.com/article/1\\\"]")'),'source hidden');
         await evaluate('localStorage.removeItem("newsai-hidden-sources-v1")');
         await nav('/editorial');await waitText('2 sources');await shot('editorial-desktop');
