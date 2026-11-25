@@ -7,6 +7,7 @@ import Bookmarks from './pages/Bookmarks';
 import DailyBrief from './pages/DailyBrief';
 import Videos from './pages/Videos';
 import Breaches from './pages/Breaches';
+import Editorial from './pages/Editorial';
 
 const THEME_STORAGE_KEY = 'newsai-theme';
 const DEFAULT_THEME = 'dark';
@@ -39,6 +40,7 @@ function App() {
     <Layout search={searchInput} onSearch={setSearchInput} theme={theme} onToggleTheme={toggleTheme}>
       <Routes>
         <Route path="/" element={<Dashboard search={search} category={category} setCategory={setCategory} />} />
+        <Route path="/editorial" element={<Editorial />} />
         <Route path="/daily-brief" element={<DailyBrief />} />
         <Route path="/videos" element={<Videos search={search} />} />
         <Route path="/breaches" element={<Breaches search={search} />} />

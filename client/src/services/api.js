@@ -116,3 +116,5 @@ export const getVideos = async ({ query = '', topics = '', limit = 24 } = {}) =>
     });
     return data;
 };
+
+export const getEditorial = async () => (await api.get('/editorial')).data;

@@ -14,6 +14,7 @@ const {
 } = require('./services/rss');
 const { repairMojibake, repairMojibakeDeep } = require('./services/encoding');
 const prisma = require('./db');
+const { buildEditorial } = require('./services/editorial');
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
@@ -247,6 +248,31 @@ router.get('/articles', (req, res, next) => req.query.bookmarked === 'true' ? re
     } catch (error) {
         console.error('Error fetching articles:', error);
         res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
+    }
+});
+
+// Bounded editorial analysis: no LLM calls and no database mutations.
+let editorialCache;
+let editorialPending;
+router.get('/editorial', async (req, res) => {
+    try {
+        if (!editorialCache || Date.now() - editorialCache.at > 300000) {
+            if (!editorialPending) editorialPending = (async () => {
+                const now = Date.now();
+                const rows = await prisma.article.findMany({
+                    where: { date: { gte: new Date(now-2*86400000), lte: new Date(now) },
+                        AND: [{ OR: [{ category:null }, { category:{ not:'Spam' } }] }, ...buildBreachExclusionWhere().AND] },
+                    select: { id:true,title:true,link:true,date:true,image:true,category:true,sourceId:true,source:{select:{name:true,category:true}} },
+                    orderBy: [{date:'desc'},{id:'desc'}], take: 500
+                });
+                editorialCache = { at:now, payload:buildEditorial(rows,now) };
+            })().finally(() => { editorialPending = null; });
+            await editorialPending;
+        }
+        res.json(repairMojibakeDeep(editorialCache.payload));
+    } catch (error) {
+        console.error('Editorial analysis failed:',error);
+        res.status(503).json({error:'Analyse éditoriale indisponible.'});
     }
 });
 

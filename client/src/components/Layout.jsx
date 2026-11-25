@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, ShieldAlert, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, ShieldAlert, Sun, Moon, TrendingUp } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuery } from '@tanstack/react-query';
 import { getHealth } from '../services/api';
@@ -13,6 +13,7 @@ function NavItem({ to, icon, children, onClick }) {
         <Link
             to={to}
             onClick={onClick}
+            aria-current={isActive ? 'page' : undefined}
             className={clsx(
                 "flex items-center space-x-3 px-4 py-3 rounded-lg border transition-all duration-300",
                 isActive
@@ -43,7 +44,8 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
 
     const getPageTitle = () => {
         switch (location.pathname) {
-            case '/': return 'Dashboard';
+            case '/': return 'Actualités';
+            case '/editorial': return 'Dossiers et tendances';
             case '/daily-brief': return 'Brief IA Quotidien';
             case '/videos': return 'Vidéos IA & Tech';
             case '/breaches': return 'Fuites de données';
@@ -83,6 +85,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
 
                 <nav className="flex-1 p-5 space-y-2.5 mt-3">
                     <NavItem to="/" icon={LayoutDashboard} onClick={closeSidebar}>Articles</NavItem>
+                    <NavItem to="/editorial" icon={TrendingUp} onClick={closeSidebar}>Dossiers et tendances</NavItem>
                     <NavItem to="/daily-brief" icon={Zap} onClick={closeSidebar}>Brief IA</NavItem>
                     <NavItem to="/videos" icon={PlayCircle} onClick={closeSidebar}>Vidéos</NavItem>
                     <NavItem to="/breaches" icon={ShieldAlert} onClick={closeSidebar}>Fuites de données</NavItem>
