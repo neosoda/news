@@ -23,8 +23,8 @@ test('source management endpoints reject unauthenticated requests before accessi
     });
 
     const origin = `http://127.0.0.1:${server.address().port}`;
-    for (const pathName of ['/api/sources', '/api/sources/health', '/api/sources/refresh']) {
-        const response = await fetch(`${origin}${pathName}`, { method: pathName.endsWith('/refresh') ? 'POST' : 'GET' });
+    for (const pathName of ['/api/sources', '/api/sources/health', '/api/sources/refresh', '/api/bookmarks', '/api/articles?bookmarked=true', '/api/articles/1/bookmark']) {
+        const response = await fetch(`${origin}${pathName}`, { method: pathName.endsWith('/refresh') || pathName.endsWith('/bookmark') ? 'POST' : 'GET' });
         assert.equal(response.status, 401, pathName);
     }
 });

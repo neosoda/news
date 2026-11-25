@@ -1,245 +1,301 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { ExternalLink, Bot, Sparkles, Bookmark, Newspaper } from 'lucide-react';
-import { summarizeArticle, toggleBookmark } from '../services/api';
-import { useQueryClient } from '@tanstack/react-query';
+import { fr } from 'date-fns/locale';
+import { ExternalLink, Bot, Bookmark, Sparkles, Star } from 'lucide-react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { summarizeArticle, toggleBookmark, getBookmarks, updateBookmarkedSummary } from '../services/api';
+import { recordOpened } from '../services/readerPreferences';
+import { safeHttpUrl, formatDateTime } from '../utils/url';
 
-const CATEGORY_COLORS = {
-    'Cybersecurité': 'bg-red-500/[0.15] text-red-300 border-red-400/25',
-    'Intelligence Artificielle': 'bg-fuchsia-500/[0.12] text-fuchsia-200 border-fuchsia-300/25',
-    'Cloud': 'bg-sky-500/[0.14] text-sky-200 border-sky-300/25',
-    'Développement': 'bg-emerald-500/[0.14] text-emerald-200 border-emerald-300/25',
-    'Hardware': 'bg-orange-500/[0.14] text-orange-200 border-orange-300/25',
-    'Web': 'bg-blue-500/[0.14] text-blue-200 border-blue-300/25',
-    'Business': 'bg-amber-500/[0.14] text-amber-200 border-amber-300/25',
-    'Société': 'bg-pink-500/[0.14] text-pink-200 border-pink-300/25',
-    'Autre': 'bg-slate-500/[0.14] text-secondary border-slate-400/20',
+const CATEGORY_STYLES = {
+    'Cybersecurité': 'border-red-500/30 bg-red-500/10 text-red-300',
+    'Intelligence Artificielle': 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200',
+    'Cloud': 'border-sky-500/30 bg-sky-500/10 text-sky-200',
+    'Développement': 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+    'Hardware': 'border-orange-500/30 bg-orange-500/10 text-orange-200',
+    'Web': 'border-blue-500/30 bg-blue-500/10 text-blue-200',
+    'Business': 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+    'Société': 'border-pink-500/30 bg-pink-500/10 text-pink-200',
+    'Autre': 'theme-border surface-muted text-secondary'
 };
 
-const FEATURED_SOURCES = {
-    'korben': {
-        border: 'border-cyan-300/35',
-        shadow: '0 0 0 1px rgba(34, 211, 238, 0.18), 0 18px 44px rgba(8, 145, 178, 0.14)',
-        label: 'text-cyan-200',
-        badge: 'bg-cyan-400/10 text-cyan-200 border-cyan-300/25',
+const FEATURED_SOURCES = [
+    {
+        match: (name) => name.includes('korben'),
+        ring: 'border-cyan-500/45',
+        topBar: 'bg-cyan-500',
+        label: 'text-cyan-300',
+        badge: 'border-cyan-500/35 bg-cyan-500/10 text-cyan-200'
     },
-    'it connect': {
-        border: 'border-emerald-300/35',
-        shadow: '0 0 0 1px rgba(52, 211, 153, 0.18), 0 18px 44px rgba(5, 150, 105, 0.14)',
-        label: 'text-emerald-200',
-        badge: 'bg-emerald-400/10 text-emerald-200 border-emerald-300/25',
-    },
-};
+    {
+        match: (name) => name.includes('it connect') || name.includes('it-connect'),
+        ring: 'border-emerald-500/45',
+        topBar: 'bg-emerald-500',
+        label: 'text-emerald-300',
+        badge: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200'
+    }
+];
 
 function getFeaturedSource(sourceName) {
     if (!sourceName) return null;
-    const lower = sourceName.toLowerCase();
-    for (const key of Object.keys(FEATURED_SOURCES)) {
-        if (lower.includes(key)) return FEATURED_SOURCES[key];
-    }
-    return null;
+    const normalized = sourceName.toLowerCase();
+    return FEATURED_SOURCES.find((entry) => entry.match(normalized)) || null;
 }
 
-const KNOWN_CATEGORIES = Object.keys(CATEGORY_COLORS);
-
-function escapeRegExp(value) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function normalizeCategory(category) {
-    if (!category || typeof category !== 'string') {
-        return 'Autre';
-    }
-
-    const trimmed = category.trim();
-    if (!trimmed) return 'Autre';
-
-    const exactMatch = KNOWN_CATEGORIES.find(
-        (known) => known.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (exactMatch) return exactMatch;
-
-    const matchedCategory = KNOWN_CATEGORIES.find((known) =>
-        new RegExp(`\\b${escapeRegExp(known)}\\b`, 'i').test(trimmed)
-    );
-
-    return matchedCategory || 'Autre';
+function resolveCategoryStyle(category) {
+    return CATEGORY_STYLES[category] || CATEGORY_STYLES['Autre'];
 }
 
 function ArticleArtwork({ article, category }) {
-    const imageCandidates = [article.image, article.source?.image]
-        .filter((image, index, images) => typeof image === 'string' && image.trim() && images.indexOf(image) === index);
-    const [candidateIndex, setCandidateIndex] = useState(0);
-    const image = imageCandidates[candidateIndex];
+    const articleImage = safeHttpUrl(article.image);
+    const sourceImage = safeHttpUrl(article.source?.image);
+    const hasDistinctPhoto = Boolean(articleImage && articleImage !== sourceImage);
+    const [photoFailed, setPhotoFailed] = useState(false);
+    const [logoFailed, setLogoFailed] = useState(false);
+
     const sourceName = article.source?.name?.trim() || 'Veille tech';
-    const sourceInitials = sourceName
+    const initials = sourceName
         .split(/\s+/)
+        .filter(Boolean)
         .slice(0, 2)
         .map((word) => word[0])
         .join('')
         .toUpperCase();
 
+    if (hasDistinctPhoto && !photoFailed) {
+        return (
+            <div className="relative aspect-[16/8] w-full overflow-hidden border-b theme-border surface-muted" data-article-artwork="photo">
+                <img
+                    src={articleImage}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                    onError={() => setPhotoFailed(true)}
+                />
+            </div>
+        );
+    }
+
     return (
-        <div className="relative h-44 overflow-hidden border-b theme-border bg-slate-950" data-article-artwork>
-            <div
-                className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_22%_18%,rgba(34,211,238,0.24),transparent_34%),radial-gradient(circle_at_82%_78%,rgba(245,158,11,0.18),transparent_32%),linear-gradient(135deg,#101827,#06090f)]"
-                aria-hidden="true"
-            >
-                <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(148,163,184,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.16)_1px,transparent_1px)] [background-size:24px_24px]" />
-                <div className="relative flex items-center gap-3 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-cyan-100 shadow-2xl backdrop-blur-sm">
-                    <Newspaper size={24} strokeWidth={1.7} />
-                    <div>
-                        <span className="block text-lg font-black tracking-[0.12em]">{sourceInitials || 'NEWS'}</span>
-                        <span className="block max-w-36 truncate text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">{category}</span>
-                    </div>
+        <div
+            className="relative flex aspect-[16/8] w-full items-center justify-center overflow-hidden border-b theme-border surface-muted px-6"
+            data-article-artwork="editorial-fallback"
+            aria-hidden="true"
+        >
+            <div className="flex items-center gap-3.5 rounded-lg border theme-border bg-[var(--color-surface-raised)] px-4 py-3">
+                {sourceImage && !logoFailed ? (
+                    <img
+                        src={sourceImage}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="h-8 w-8 rounded object-contain shrink-0"
+                        onError={() => setLogoFailed(true)}
+                    />
+                ) : (
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border theme-border surface-muted font-serif text-sm font-bold text-accent">
+                        {initials || 'TN'}
+                    </span>
+                )}
+                <div className="min-w-0">
+                    <span className="block max-w-[11rem] truncate text-xs font-semibold text-primary">
+                        {sourceName}
+                    </span>
+                    <span className="block max-w-[11rem] truncate text-[11px] text-muted">
+                        {category}
+                    </span>
                 </div>
             </div>
-
-            {image && (
-                <img
-                    key={image}
-                    src={image}
-                    alt={`Illustration de l’article : ${article.title}`}
-                    className={`absolute inset-0 h-full w-full transition-transform duration-500 group-hover:scale-105 ${candidateIndex === 0 ? 'object-cover opacity-[0.88] saturate-[0.92]' : 'object-contain bg-[var(--color-surface-raised)] p-8'}`}
-                    onError={() => setCandidateIndex((current) => current + 1)}
-                />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-surface-raised)] via-transparent to-black/20" />
         </div>
     );
 }
 
 export default function ArticleCard({ article }) {
     const queryClient = useQueryClient();
-    const [summary, setSummary] = useState(article.summary);
-    const [isBookmarked, setIsBookmarked] = useState(article.isBookmarked);
+    const [generatedSummary, setGeneratedSummary] = useState(null);
+    const [actionError, setActionError] = useState('');
     const [loading, setLoading] = useState(false);
 
+    const summary = generatedSummary || article.summary;
+    const { data: bookmarks = [] } = useQuery({
+        queryKey: ['bookmarks'],
+        queryFn: getBookmarks
+    });
+
+    const isBookmarked = bookmarks.some((item) => item.link === article.link);
+    const link = safeHttpUrl(article.link);
+    const sourceImage = safeHttpUrl(article.source?.image);
+    const sourceName = article.source?.name || 'Source';
+    const category = article.category || article.source?.category || 'Autre';
+    const featured = getFeaturedSource(sourceName);
+    const categoryStyle = resolveCategoryStyle(category);
+
+    const date = new Date(article.date);
+    const validDate = Number.isFinite(date.getTime());
+    const relativeTime = validDate
+        ? formatDistanceToNow(date, { addSuffix: true, locale: fr })
+        : '';
+    const exactDate = validDate ? formatDateTime(article.date) : '';
+
+    const excerpt = (article.content || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const rememberOpened = () => {
+        try {
+            queryClient.setQueryData(['reader-history'], recordOpened(article));
+        } catch {
+            // Opening the original article must always remain possible.
+        }
+    };
+
     const handleSummarize = async () => {
+        setActionError('');
         setLoading(true);
         try {
             const data = await summarizeArticle(article.id);
-            setSummary(data.summary);
+            setGeneratedSummary(data.summary);
             queryClient.invalidateQueries({ queryKey: ['articles'] });
-        } catch (e) {
-            console.error(e);
+            if (isBookmarked) {
+                try {
+                    const updated = updateBookmarkedSummary(article.link, data.summary);
+                    queryClient.setQueryData(['bookmarks'], updated);
+                } catch {
+                    // Summary remains visible in current view.
+                }
+            }
+        } catch (error) {
+            console.error(error);
+            setActionError('Résumé indisponible pour le moment. Réessayez plus tard.');
         } finally {
             setLoading(false);
         }
     };
 
     const handleBookmark = async () => {
-        const newState = !isBookmarked;
-        setIsBookmarked(newState);
+        setActionError('');
         try {
-            await toggleBookmark(article.id);
-            queryClient.invalidateQueries({ queryKey: ['articles'] });
-            queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
-        } catch (e) {
-            console.error(e);
-            setIsBookmarked(!newState);
+            const next = await toggleBookmark({ ...article, summary });
+            queryClient.setQueryData(['bookmarks'], next);
+        } catch (error) {
+            console.error(error);
+            setActionError('Impossible de sauvegarder le favori sur cet appareil.');
         }
     };
 
-    const resolvedCategory = normalizeCategory(article.category);
-    const categoryStyle = CATEGORY_COLORS[resolvedCategory] || CATEGORY_COLORS['Autre'];
-    const featured = getFeaturedSource(article.source?.name);
-
     return (
         <article
-            className={`group relative flex min-h-full flex-col overflow-hidden rounded-xl border surface-card transition-all duration-300 hover:-translate-y-0.5 hover:bg-cyan-400/[0.06] hover:shadow-2xl hover:shadow-cyan-950/10 ${featured ? featured.border : 'theme-border'
-                }`}
-            style={featured ? { boxShadow: featured.shadow } : undefined}
+            className={`relative flex flex-col min-w-0 surface-card surface-card-interactive overflow-hidden ${featured ? featured.ring : ''}`}
         >
-            <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/25 to-transparent" />
+            {featured && <div className={`h-1 w-full ${featured.topBar}`} aria-hidden="true" />}
 
-            <ArticleArtwork article={article} category={resolvedCategory} />
+            <ArticleArtwork key={article.image || article.source?.image || article.id} article={article} category={category} />
 
-            <div className="absolute top-3 left-3 z-10 flex max-w-[calc(100%-4rem)] flex-wrap gap-2">
-                <span className={`px-2.5 py-1 rounded-full text-[11px] font-black border backdrop-blur-md ${categoryStyle}`}>
-                    {resolvedCategory || 'News'}
-                </span>
-                {featured && (
-                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-black border backdrop-blur-md ${featured.badge}`}>
-                        À surveiller
-                    </span>
-                )}
-            </div>
-
-            <button
-                onClick={handleBookmark}
-                aria-label={isBookmarked ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-                className="absolute top-3 right-3 z-10 p-2 rounded-full bg-[var(--color-surface-raised)]/90 hover:bg-cyan-400/15 backdrop-blur-md text-primary border theme-border transition-colors"
-                title={isBookmarked ? "Retirer des favoris" : "Ajouter aux favoris"}
-            >
-                <Bookmark size={16} className={isBookmarked ? "fill-amber-300 text-amber-300" : "text-secondary"} />
-            </button>
-
-            <div className="p-5 flex-1 flex flex-col">
-                <div className="mb-3 flex items-center justify-between gap-3 text-xs">
-                    <div className={`min-w-0 flex items-center space-x-2 font-bold ${featured ? featured.label : 'text-cyan-200'}`}>
-                        {article.source?.image && (
-                            <img src={article.source.image} alt="" className="w-4 h-4 rounded-sm object-contain surface-muted" />
+            <div className="p-4 sm:p-5 flex-1 flex flex-col">
+                <div className="flex items-start justify-between gap-2.5 mb-3">
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${categoryStyle}`}>
+                            {category}
+                        </span>
+                        {featured && (
+                            <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${featured.badge}`}>
+                                <Star size={11} aria-hidden="true" className="fill-current" />
+                                À surveiller
+                            </span>
                         )}
-                        <span className="truncate">{article.source?.name}</span>
                     </div>
-                    <span className="shrink-0 text-muted italic">
-                        {formatDistanceToNow(new Date(article.date), { addSuffix: true })}
-                    </span>
+
+                    <button
+                        type="button"
+                        aria-pressed={isBookmarked}
+                        aria-label={isBookmarked ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                        title={isBookmarked ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                        onClick={handleBookmark}
+                        className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-lg border theme-border text-secondary hover:text-accent hover:border-[var(--color-border-strong)] transition-colors"
+                    >
+                        <Bookmark size={16} aria-hidden="true" className={isBookmarked ? 'fill-current text-accent' : ''} />
+                    </button>
                 </div>
 
-                <h3 className="text-lg font-black text-primary leading-snug mb-3 tracking-tight group-hover:text-accent transition-colors">
-                    <a href={article.link} target="_blank" rel="noopener noreferrer" className="hover:underline decoration-cyan-300/50 underline-offset-4">
-                        {article.title}
-                    </a>
+                <div className="flex items-center justify-between gap-2 text-xs mb-2.5">
+                    <div className={`flex items-center gap-1.5 min-w-0 font-semibold ${featured ? featured.label : 'text-secondary'}`}>
+                        {sourceImage && (
+                            <img src={sourceImage} alt="" loading="lazy" className="h-3.5 w-3.5 rounded-sm object-contain shrink-0" />
+                        )}
+                        <span className="truncate">{sourceName}</span>
+                    </div>
+                    {validDate && (
+                        <time
+                            dateTime={date.toISOString()}
+                            title={exactDate}
+                            className="shrink-0 text-muted tabular-nums"
+                        >
+                            {relativeTime}
+                        </time>
+                    )}
+                </div>
+
+                <h3 className="text-[1.0625rem] font-semibold leading-snug tracking-tight text-primary mb-3 break-words">
+                    {link ? (
+                        <a
+                            href={link}
+                            onClick={rememberOpened}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:text-accent hover:underline underline-offset-4 transition-colors"
+                        >
+                            {article.title}
+                        </a>
+                    ) : (
+                        article.title
+                    )}
                 </h3>
 
-                <div className="text-xs text-muted mb-4">
-                    <span className="font-semibold">
-                        {new Date(article.date).toLocaleString('fr-FR', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        })}
-                    </span>
-                </div>
-
                 {summary ? (
-                    <div className="mt-auto rounded-lg border border-cyan-300/20 bg-cyan-400/[0.08] p-3">
-                        <div className="flex items-center space-x-2 mb-1.5 text-cyan-200 text-[11px] font-black uppercase tracking-[0.16em]">
-                            <Sparkles size={12} />
-                            <span>Résumé IA</span>
-                        </div>
-                        <p className="text-sm text-secondary leading-relaxed animate-in fade-in">{summary}</p>
+                    <div className="border-l-2 border-[var(--brand-primary)] pl-3 py-0.5 mb-3">
+                        <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent mb-1">
+                            <Sparkles size={11} aria-hidden="true" />
+                            Synthèse IA
+                        </p>
+                        <p className="text-sm leading-6 text-secondary">{summary}</p>
                     </div>
-                ) : (
-                    article.content ? (
-                        <p className="text-sm text-muted leading-6 line-clamp-3 mb-4">{article.content.replace(/<[^>]+>/g, '')}</p>
-                    ) : null
+                ) : excerpt ? (
+                    <p className="text-sm leading-6 text-secondary line-clamp-3 mb-3">{excerpt}</p>
+                ) : null}
+
+                {actionError && (
+                    <p role="alert" className="text-xs font-medium text-red-300 mb-3">
+                        {actionError}
+                    </p>
                 )}
 
-                <div className="mt-4 pt-4 border-t theme-border flex items-center justify-between">
+                <div className="mt-auto pt-3 border-t theme-border flex items-center justify-between gap-3">
                     {!summary && (
                         <button
+                            type="button"
                             onClick={handleSummarize}
                             disabled={loading}
-                            className="flex items-center space-x-2 text-sm font-bold text-secondary hover:text-primary surface-muted hover:bg-cyan-400/[0.10] border theme-border px-3 py-1.5 rounded-lg transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-md border theme-border px-2.5 py-1.5 text-xs font-semibold text-secondary hover:text-primary hover:border-[var(--color-border-strong)] disabled:opacity-60 transition-colors"
                         >
-                            <Bot size={16} className={loading ? "animate-spin" : ""} />
-                            <span>{loading ? 'Analyse...' : 'Résumer'}</span>
+                            <Bot size={14} aria-hidden="true" className={loading ? 'animate-spin' : ''} />
+                            {loading ? 'Analyse…' : 'Résumer'}
                         </button>
                     )}
-
-                    <a
-                        href={article.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-auto rounded-lg p-2 text-muted hover:text-accent hover:bg-cyan-400/[0.10] transition-colors"
-                    >
-                        <ExternalLink size={18} />
-                    </a>
+                    {link && (
+                        <a
+                            href={link}
+                            onClick={rememberOpened}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Lire l’article original : ${article.title}`}
+                            className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:underline underline-offset-4"
+                        >
+                            Lire la source
+                            <ExternalLink size={13} aria-hidden="true" />
+                        </a>
+                    )}
                 </div>
             </div>
         </article>

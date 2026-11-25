@@ -5,7 +5,7 @@ const { summarizeArticle } = require('./services/ai');
 const { fetchVideos, parseLimit, parseTopics } = require('./services/videos');
 const { validateOutboundHttpUrl } = require('./services/urlSafety');
 const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./services/feedUrlCatalog');
-const { requireAdmin, limitAdminMutation, limitSummarization } = require('./services/adminAuth');
+const { requireAdmin, limitAdminMutation, limitSummarization, limitAIGeneration, limitVideos } = require('./services/adminAuth');
 const {
     getFeedUpdateStatus,
     requestFeedRefresh,
@@ -14,6 +14,9 @@ const {
 } = require('./services/rss');
 const { repairMojibake, repairMojibakeDeep } = require('./services/encoding');
 const prisma = require('./db');
+const { buildEditorial } = require('./services/editorial');
+const { getCatalog } = require('./services/kev');
+const { cachedBriefValid } = require('./services/briefQuality');
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
@@ -46,7 +49,7 @@ function buildBreachExclusionWhere({ allowBreaches = false } = {}) {
     }
     return {
         AND: [
-            { category: { notIn: [...BREACH_CATEGORY_VALUES] } },
+            { OR: [{ category: null }, { category: { notIn: [...BREACH_CATEGORY_VALUES] } }] },
             { source: { category: { notIn: [...BREACH_CATEGORY_VALUES] } } }
         ]
     };
@@ -64,8 +67,9 @@ const CATEGORY_RANK_BOOST_MINUTES = {
 };
 
 function parsePositiveInt(value, fallback) {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+    if (!/^\d+$/.test(String(value))) return fallback;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= 2147483647 ? parsed : fallback;
 }
 
 function parseEntityId(value) {
@@ -90,9 +94,6 @@ function getArticleRankScore(article) {
 
     score += (CATEGORY_RANK_BOOST_MINUTES[category] || 0) * RANKING_MINUTE_MS;
 
-    if (article?.isBookmarked) {
-        score += 6 * 60 * RANKING_MINUTE_MS;
-    }
     if (article?.image) {
         score += 20 * RANKING_MINUTE_MS;
     }
@@ -166,12 +167,13 @@ router.get('/health', async (req, res) => {
 });
 
 // GET /articles - List articles with pagination and search
-router.get('/articles', async (req, res) => {
-    const page = parsePositiveInt(req.query.page, 1);
+router.get('/articles', (req, res, next) => req.query.bookmarked === 'true' ? requireAdmin(req, res, next) : next(), async (req, res) => {
+    const page = Math.min(parsePositiveInt(req.query.page, 1), 10000);
     const limit = Math.min(parsePositiveInt(req.query.limit, DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
-    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
     const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
     const sourceId = parsePositiveInt(req.query.sourceId, null);
+    const excludedSources = typeof req.query.excludeSources==='string' ? [...new Set(req.query.excludeSources.split(',').slice(0,100).map(v=>parsePositiveInt(v,null)).filter(Boolean))] : [];
     const maxAllowedDate = new Date(Date.now() + MAX_FUTURE_SKEW_MS);
 
     const where = {};
@@ -180,15 +182,14 @@ router.get('/articles', async (req, res) => {
         { OR: [{ category: null }, { category: { not: 'Spam' } }] }
     ];
 
-    // Filtre de recherche textuelle
-    if (search) {
-        conditions.push({
-            OR: [
-                { title: { contains: search } },
-                { content: { contains: search } }
-            ]
-        });
-    }
+    // Every term must match at least one searchable field.
+    const terms = search.split(/\s+/).filter(Boolean).slice(0,8);
+    for (const term of terms) conditions.push({ OR: [
+        { title: { contains: term } }, { originalTitle: { contains: term } },
+        { content: { contains: term } }, { summary: { contains: term } }
+    ] });
+    const period = { '24h':86400000, '7d':604800000, '30d':2592000000 }[req.query.period];
+    if (typeof period === 'number') conditions.push({ date: { gte:new Date(Date.now()-period) } });
 
     // Filtre de catégorie
     if (category && typeof category === 'string' && category.trim() !== '') {
@@ -208,6 +209,8 @@ router.get('/articles', async (req, res) => {
     // Filtre de source
     if (sourceId !== null) {
         conditions.push({ sourceId });
+    } else if (excludedSources.length) {
+        conditions.push({ sourceId: { notIn: excludedSources } });
     }
 
     // Les articles "Fuites de données" ne vivent que dans la page dédiée.
@@ -233,13 +236,13 @@ router.get('/articles', async (req, res) => {
             ],
             take: limit,
             skip: (page - 1) * limit,
-            include: { source: true }
+            include: { source: { select: { id:true,name:true,image:true,category:true } } }
         });
 
         const total = await prisma.article.count({ where });
 
         res.json({
-            data: repairMojibakeDeep(rankArticlesForDailyScan(articles)),
+            data: repairMojibakeDeep(rankArticlesForDailyScan(articles).map(({ isBookmarked, ...article }) => ({ ...article, isBookmarked: req.query.bookmarked === 'true' && isBookmarked }))),
             pagination: {
                 total,
                 page,
@@ -248,7 +251,200 @@ router.get('/articles', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching articles:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
+    }
+});
+
+// Bounded editorial analysis: no LLM calls and no database mutations.
+let editorialCache = null;
+let editorialPending = null;
+router.get('/editorial', async (req, res) => {
+    try {
+        if (!editorialCache || Date.now() - editorialCache.at > 300000) {
+            if (!editorialPending) {
+                editorialPending = (async () => {
+                    const now = Date.now();
+                    const rows = await prisma.article.findMany({
+                        where: {
+                            date: { gte: new Date(now - 2 * 86400000), lte: new Date(now) },
+                            AND: [
+                                { OR: [{ category: null }, { category: { not: 'Spam' } }] },
+                                ...buildBreachExclusionWhere().AND
+                            ]
+                        },
+                        select: {
+                            id: true,
+                            title: true,
+                            link: true,
+                            date: true,
+                            image: true,
+                            category: true,
+                            sourceId: true,
+                            source: { select: { name: true, category: true } }
+                        },
+                        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+                        take: 500
+                    });
+                    editorialCache = { at: now, payload: buildEditorial(rows, now) };
+                })().finally(() => {
+                    editorialPending = null;
+                });
+            }
+            await editorialPending;
+        }
+        res.json(repairMojibakeDeep(editorialCache.payload));
+    } catch (error) {
+        console.error('Editorial analysis failed:', error);
+        res.status(503).json({ error: 'Analyse éditoriale indisponible.' });
+    }
+});
+
+router.get('/article-sources', async (req, res) => {
+    try {
+        const sources = await prisma.source.findMany({
+            where: {
+                category: { notIn: [...BREACH_CATEGORY_VALUES] },
+                articles: { some: {} }
+            },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' }
+        });
+        res.json(repairMojibakeDeep(sources));
+    } catch (error) {
+        console.error('Public source list failed:', error);
+        res.status(503).json({ error: 'Sources indisponibles.' });
+    }
+});
+
+router.get('/cyber/kev', async (req, res) => {
+    try {
+        const catalog = await getCatalog();
+        const search = normalizeInput(req.query.search, 120).toLowerCase();
+        const onlyRansomware = req.query.ransomware === 'known';
+        const ransomwareTotal = catalog.entries.filter((entry) => entry.ransomware === 'Known').length;
+
+        const entries = catalog.entries.filter((vuln) => {
+            if (onlyRansomware && vuln.ransomware !== 'Known') {
+                return false;
+            }
+            if (!search) {
+                return true;
+            }
+            return [vuln.cve, vuln.vendor, vuln.product, vuln.name].some((field) =>
+                field.toLowerCase().includes(search)
+            );
+        });
+
+        const page = Math.min(parsePositiveInt(req.query.page, 1), 10000);
+        const pageSize = 30;
+        const { entries: allEntries, ...meta } = catalog;
+
+        res.json({
+            data: entries.slice((page - 1) * pageSize, page * pageSize),
+            meta: {
+                ...meta,
+                total: entries.length,
+                catalogSize: allEntries.length,
+                ransomwareTotal,
+                page,
+                pages: Math.ceil(entries.length / pageSize)
+            }
+        });
+    } catch (error) {
+        console.error('KEV unavailable:', error.message);
+        res.status(503).json({ error: 'Catalogue CISA indisponible.' });
+    }
+});
+
+router.get('/cyber/cert', async (req, res) => {
+    try {
+        const search = normalizeInput(req.query.search, 120).toLowerCase();
+        const rows = await prisma.article.findMany({
+            where: {
+                source: { name: { startsWith: 'CERT-FR' } },
+                date: { lte: new Date() },
+                OR: [{ category: null }, { category: { not: 'Spam' } }]
+            },
+            orderBy: [{ date: 'desc' }, { id: 'desc' }],
+            take: 40,
+            select: {
+                id: true,
+                title: true,
+                link: true,
+                date: true,
+                content: true,
+                source: { select: { name: true } }
+            }
+        });
+
+        // Cross-reference against already-cached KEV CVEs without adding external latency.
+        const kevCveSet = typeof getCatalog.getCachedCveSet === 'function' ? getCatalog.getCachedCveSet() : new Set();
+
+        const formatted = rows
+            .map(({ content, ...article }) => {
+                const cves = [
+                    ...new Set(
+                        (`${article.title} ${content || ''}`).match(/\bCVE-\d{4}-\d{4,}\b/gi) || []
+                    )
+                ]
+                    .map((cve) => cve.toUpperCase())
+                    .slice(0, 20);
+                const kevMatches = cves.filter((cve) => kevCveSet.has(cve));
+                return { ...article, cves, kevMatches };
+            })
+            .filter((article) => {
+                if (!search) return true;
+                return (
+                    article.title.toLowerCase().includes(search) ||
+                    article.cves.some((cve) => cve.toLowerCase().includes(search))
+                );
+            });
+
+        res.json(repairMojibakeDeep(formatted));
+    } catch (error) {
+        console.error('CERT feed unavailable:', error.message);
+        res.status(503).json({ error: 'Flux CERT-FR indisponible.' });
+    }
+});
+
+router.get('/source-observatory', async (req, res) => {
+    try {
+        const now = new Date();
+        const cutoff = new Date(now.getTime() - 7 * 86400000);
+        const sources = await prisma.source.findMany({
+            select: {
+                id: true,
+                name: true,
+                category: true,
+                isActive: true,
+                lastFetched: true,
+                cooldownUntil: true,
+                consecutiveFailures: true
+            }
+        });
+        const counts = await prisma.article.groupBy({
+            by: ['sourceId'],
+            where: {
+                date: { gte: cutoff, lte: now },
+                OR: [{ category: null }, { category: { not: 'Spam' } }]
+            },
+            _count: { _all: true },
+            _max: { date: true }
+        });
+        const index = new Map(counts.map((item) => [item.sourceId, item]));
+        const payload = sources
+            .map(({ cooldownUntil, ...source }) => ({
+                ...source,
+                isCoolingDown: Boolean(cooldownUntil && new Date(cooldownUntil) > now),
+                articles7d: index.get(source.id)?._count._all || 0,
+                lastArticle: index.get(source.id)?._max.date || null
+            }))
+            .sort((a, b) => b.articles7d - a.articles7d || a.name.localeCompare(b.name));
+
+        res.json(repairMojibakeDeep(payload));
+    } catch (error) {
+        console.error('Observatory failed:', error);
+        res.status(503).json({ error: 'Observatoire indisponible.' });
     }
 });
 
@@ -267,7 +463,7 @@ router.get('/sources', async (req, res) => {
         res.json(sources);
     } catch (error) {
         console.error('Error fetching sources:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -315,7 +511,7 @@ router.get('/sources/health', async (req, res) => {
         res.json({ summary, data });
     } catch (error) {
         console.error('Error fetching source health:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -344,7 +540,7 @@ router.post('/sources', limitAdminMutation, async (req, res) => {
             return res.status(409).json({ error: 'Source URL already exists.' });
         }
 
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -368,7 +564,7 @@ router.post('/sources/:id/reactivate', limitAdminMutation, async (req, res) => {
         });
         res.json(source);
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -380,13 +576,16 @@ router.delete('/sources/:id', limitAdminMutation, async (req, res) => {
     }
 
     try {
-        await prisma.$transaction([
-            prisma.article.deleteMany({ where: { sourceId } }),
-            prisma.source.delete({ where: { id: sourceId } })
-        ]);
+        const removed = await prisma.$transaction(async tx => {
+            if (await tx.article.count({ where: { sourceId, isBookmarked: true } })) return false;
+            await tx.article.deleteMany({ where: { sourceId } });
+            await tx.source.delete({ where: { id: sourceId } });
+            return true;
+        });
+        if (!removed) return res.status(409).json({ error: 'Cette source contient des favoris historiques. Retirez-les avant la suppression.' });
         res.json({ success: true });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -461,7 +660,7 @@ router.post('/admin/repair-encoding', requireAdmin, limitAdminMutation, async (r
         });
     } catch (error) {
         console.error('Encoding repair failed:', error.message);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
@@ -500,12 +699,13 @@ router.get('/articles/stats', async (req, res) => {
         res.json({ stats, total });
     } catch (error) {
         console.error('Error fetching article stats:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
 // POST /articles/:id/summarize
-router.post('/articles/:id/summarize', limitSummarization, async (req, res) => {
+const pendingSummaries = new Map();
+router.post('/articles/:id/summarize', limitSummarization, limitAIGeneration, async (req, res) => {
     const articleId = parseEntityId(req.params.id);
     if (articleId === null) {
         return res.status(400).json({ error: 'Invalid article id.' });
@@ -519,21 +719,24 @@ router.post('/articles/:id/summarize', limitSummarization, async (req, res) => {
             return res.json({ summary: repairMojibake(article.summary) });
         }
 
-        const summaryCallback = await summarizeArticle(article.content || article.title);
-
-        const updated = await prisma.article.update({
-            where: { id: articleId },
-            data: { summary: summaryCallback }
-        });
-
+        let pending = pendingSummaries.get(articleId);
+        if (!pending) {
+            if (pendingSummaries.size >= 4) return res.status(429).json({ error: 'Résumés occupés. Réessayez plus tard.' });
+            pending = (async () => {
+                const summary = await summarizeArticle(article.content || article.title);
+                return prisma.article.update({ where: { id: articleId }, data: { summary } });
+            })().finally(() => pendingSummaries.delete(articleId));
+            pendingSummaries.set(articleId, pending);
+        }
+        const updated = await pending;
         res.json({ summary: repairMojibake(updated.summary) });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
 // POST /articles/:id/bookmark - Toggle bookmark
-router.post('/articles/:id/bookmark', async (req, res) => {
+router.post('/articles/:id/bookmark', requireAdmin, limitAdminMutation, async (req, res) => {
     const articleId = parseEntityId(req.params.id);
     if (articleId === null) {
         return res.status(400).json({ error: 'Invalid article id.' });
@@ -550,12 +753,12 @@ router.post('/articles/:id/bookmark', async (req, res) => {
 
         res.json({ isBookmarked: updated.isBookmarked });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
 // GET /bookmarks - Helper route for only bookmarks
-router.get('/bookmarks', async (req, res) => {
+router.get('/bookmarks', requireAdmin, async (req, res) => {
     try {
         const maxAllowedDate = new Date(Date.now() + MAX_FUTURE_SKEW_MS);
         const bookmarks = await prisma.article.findMany({
@@ -568,16 +771,16 @@ router.get('/bookmarks', async (req, res) => {
         });
         res.json(repairMojibakeDeep(bookmarks));
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'La requête n’a pas pu être traitée.' });
     }
 });
 
 const { generateCategoryBrief, BRIEF_SOURCE_LIMIT } = require('./services/ai');
 
 // GET /daily-brief - Generate daily highlights
-router.get('/daily-brief', async (req, res) => {
-    try {
-        const dateKey = new Date().toISOString().slice(0, 10);
+const pendingBriefs = new Map();
+let nextBriefAttemptAt = 0;
+async function buildDailyBrief(dateKey) {
         const cachedBrief = await prisma.dailyBrief.findUnique({ where: { dateKey } });
         const isFresh = cachedBrief && (Date.now() - cachedBrief.updatedAt.getTime()) < 60 * 60 * 1000;
 
@@ -587,14 +790,13 @@ router.get('/daily-brief', async (req, res) => {
                 // guardrails were added (the cached JSON was generated by older
                 // LLM responses that hadn't been re-decoded).
                 const parsed = JSON.parse(cachedBrief.payload);
-                return res.json(repairMojibakeDeep(parsed));
+                if (cachedBriefValid(parsed)) return repairMojibakeDeep(parsed);
             } catch (error) {
                 console.warn('Ignoring an invalid cached daily brief:', error.message);
             }
         }
 
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
         // 1. Fetch articles from last 24h. Breach articles are intentionally
         // excluded: they live in their own dedicated page, the daily tech
@@ -602,16 +804,15 @@ router.get('/daily-brief', async (req, res) => {
         const breachExclusion = buildBreachExclusionWhere();
         const articles = await prisma.article.findMany({
             where: {
-                date: { gt: yesterday },
-                category: { not: 'Spam' },
-                ...(breachExclusion || {})
+                date: { gt: yesterday, lte: new Date(Date.now() + MAX_FUTURE_SKEW_MS) },
+                AND: [{ OR: [{ category: null }, { category: { not: 'Spam' } }] }, ...(breachExclusion?.AND || [])]
             },
             include: { source: true },
             orderBy: { date: 'desc' }
         });
 
         if (articles.length === 0) {
-            return res.json([]);
+            return [];
         }
 
         // 2. Group by category
@@ -623,7 +824,7 @@ router.get('/daily-brief', async (req, res) => {
         // Distribute articles into their category bucket (fallback to 'Autre')
         articles.forEach(article => {
             const cat = article.category || article.source?.category;
-            if (cat && groups[cat] !== undefined) {
+            if (cat && Object.hasOwn(groups, cat)) {
                 groups[cat].push(article);
             } else {
                 groups['Autre'].push(article);
@@ -634,7 +835,9 @@ router.get('/daily-brief', async (req, res) => {
         const briefs = [];
         const activeCategories = Object.keys(groups).filter(c => groups[c].length > 0);
 
-        // Process sequentially to avoid hitting rate limits too hard
+        // Process sequentially to avoid hitting rate limits too hard.
+        // Isolate per-category failures so one invalid LLM output does not abort the full edition.
+        let lastCategoryError = null;
         for (const cat of activeCategories) {
             const catArticles = groups[cat];
 
@@ -642,23 +845,31 @@ router.get('/daily-brief', async (req, res) => {
             const heroArticle = catArticles.find(a => a.image) || catArticles[0];
             const heroImage = heroArticle ? heroArticle.image : null;
 
-            // Generate summary
-            const summary = await generateCategoryBrief(cat, catArticles);
+            try {
+                const summary = await generateCategoryBrief(cat, catArticles);
 
-            briefs.push({
-                category: cat,
-                summary: summary,
-                articleCount: catArticles.length,
-                heroImage: heroImage,
-                // Same order as the numbered list given to the model: [n] -> topArticles[n - 1]
-                topArticles: catArticles.slice(0, BRIEF_SOURCE_LIMIT).map(a => ({
-                    id: a.id,
-                    title: a.title,
-                    link: a.link,
-                    date: a.date,
-                    source: a.source ? { name: a.source.name } : null
-                }))
-            });
+                briefs.push({
+                    category: cat,
+                    summary: summary,
+                    articleCount: catArticles.length,
+                    heroImage: heroImage,
+                    // Same order as the numbered list given to the model: [n] -> topArticles[n - 1]
+                    topArticles: catArticles.slice(0, BRIEF_SOURCE_LIMIT).map(a => ({
+                        id: a.id,
+                        title: a.title,
+                        link: a.link,
+                        date: a.date,
+                        source: a.source ? { name: a.source.name } : null
+                    }))
+                });
+            } catch (error) {
+                lastCategoryError = error;
+                console.error(`Skipping daily brief category "${cat}":`, error.message);
+            }
+        }
+
+        if (briefs.length === 0) {
+            throw lastCategoryError || new Error('Daily brief generation failed for all categories');
         }
 
         await prisma.dailyBrief.upsert({
@@ -667,16 +878,103 @@ router.get('/daily-brief', async (req, res) => {
             update: { payload: JSON.stringify(briefs) }
         });
 
-        res.json(briefs);
+        return briefs;
+}
 
+function parisDateKey() {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Paris',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+    const part = (type) => parts.find((item) => item.type === type).value;
+    return [part('year'), part('month'), part('day')].join('-');
+}
+
+function requestDailyBrief(dateKey = parisDateKey()) {
+    let pending = pendingBriefs.get(dateKey);
+    if (!pending && Date.now() >= nextBriefAttemptAt) {
+        pending = buildDailyBrief(dateKey)
+            .catch((error) => {
+                nextBriefAttemptAt = Date.now() + 60000;
+                throw error;
+            })
+            .finally(() => {
+                pendingBriefs.delete(dateKey);
+            });
+        pendingBriefs.set(dateKey, pending);
+    }
+    return pending || Promise.reject(new Error('brief_retry_cooldown'));
+}
+
+router.get('/daily-brief', limitSummarization, async (req, res) => {
+    const dateKey = parisDateKey();
+    try {
+        res.json(await requestDailyBrief(dateKey));
     } catch (error) {
         console.error('Daily Brief Error:', error);
-        res.status(500).json({ error: error.message });
+        const cached = await prisma.dailyBrief.findUnique({ where: { dateKey } }).catch(() => null);
+        if (cached) {
+            try {
+                const parsed = JSON.parse(cached.payload);
+                if (cachedBriefValid(parsed)) {
+                    res.set('X-Brief-Stale', 'true');
+                    return res.json(repairMojibakeDeep(parsed));
+                }
+            } catch {
+                // Invalid cached payload
+            }
+        }
+        res.status(503).json({ error: 'Brief temporairement indisponible.' });
+    }
+});
+
+router.get('/brief-archive', async (req, res) => {
+    try {
+        const rows = await prisma.dailyBrief.findMany({
+            orderBy: { dateKey: 'desc' },
+            take: 90,
+            select: { dateKey: true, updatedAt: true, payload: true }
+        });
+        const valid = rows
+            .filter((row) => {
+                try {
+                    return cachedBriefValid(JSON.parse(row.payload));
+                } catch {
+                    return false;
+                }
+            })
+            .map(({ dateKey, updatedAt }) => ({ dateKey, updatedAt }));
+        res.json(valid);
+    } catch (error) {
+        console.error('Brief archive failed:', error);
+        res.status(503).json({ error: 'Archives indisponibles.' });
+    }
+});
+
+router.get('/brief-archive/:date', async (req, res) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) {
+        return res.status(400).json({ error: 'Date invalide.' });
+    }
+    try {
+        const row = await prisma.dailyBrief.findUnique({ where: { dateKey: req.params.date } });
+        if (!row) {
+            return res.status(404).json({ error: 'Édition introuvable.' });
+        }
+        const briefs = JSON.parse(row.payload);
+        if (!cachedBriefValid(briefs)) {
+            return res.status(404).json({ error: 'Édition indisponible.' });
+        }
+        res.json(repairMojibakeDeep(briefs));
+    } catch (error) {
+        console.error('Brief edition failed:', error);
+        res.status(503).json({ error: 'Édition indisponible.' });
     }
 });
 
 // GET /videos - Curated tech/IA videos from trusted channels
-router.get('/videos', async (req, res) => {
+router.get('/videos', limitVideos, async (req, res) => {
     try {
         const limit = parseLimit(req.query.limit);
         const topics = parseTopics(req.query.topics);
@@ -691,3 +989,4 @@ router.get('/videos', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.requestDailyBrief = requestDailyBrief;

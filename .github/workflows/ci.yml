@@ -1,0 +1,87 @@
+name: Application CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    env:
+      SQLITE_URL: file:/tmp/newsai-ci.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Prepare isolated SQLite test schemas
+        run: |
+          for db in newsai-admin-route-test newsai-breach-exclusion-test newsai-title-signature-dedup-test; do
+            SQLITE_URL="file:/tmp/$db.db" npx prisma db push --skip-generate
+          done
+      - run: npm test
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SQLITE_URL: file:/tmp/newsai-browser-ci.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: server
+      - run: npx prisma generate && npx prisma db push --skip-generate
+        working-directory: server
+      - run: npm ci && npm run build
+        working-directory: client
+      - name: Real Chromium reader workflows
+        run: node server/scripts/browser-smoke.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reader-browser-screenshots
+          path: /tmp/newsai-browser-screenshots
+          if-no-files-found: ignore
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        directory: [client, server]
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check dependency advisories
+        run: npm audit --audit-level=high

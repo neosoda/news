@@ -5,6 +5,7 @@ const api = axios.create({
 });
 
 const ADMIN_TOKEN_STORAGE_KEY = 'newsai-admin-token';
+const BOOKMARK_KEY = 'newsai-bookmarks-v1';
 
 function getSessionStorage() {
     return typeof window === 'undefined' ? null : window.sessionStorage;
@@ -35,8 +36,19 @@ export const clearAdminToken = () => {
     applyAdminToken('');
 };
 
-export const getArticles = async (page = 1, search = '', category = '') => {
-    const { data } = await api.get('/articles', { params: { page, search, category } });
+export const getArticles = async (page = 1, search = '', category = '', filters = {}) => {
+    const { data } = await api.get('/articles', {
+        params: {
+            page,
+            search,
+            category,
+            period: filters.period || undefined,
+            sourceId: filters.sourceId || undefined,
+            excludeSources: filters.excludeSources?.length
+                ? filters.excludeSources.join(',')
+                : undefined
+        }
+    });
     return data;
 };
 
@@ -75,19 +87,41 @@ export const summarizeArticle = async (id) => {
     return data;
 };
 
-export const getBookmarks = async () => {
-    const { data } = await api.get('/bookmarks');
-    return data;
+function readStoredBookmarks() {
+    try {
+        const raw = window.localStorage.getItem(BOOKMARK_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((item) => item && typeof item.link === 'string' && typeof item.title === 'string');
+    } catch {
+        return [];
+    }
+}
+
+export const getBookmarks = async () => readStoredBookmarks();
+
+export const toggleBookmark = async (article) => {
+    const current = readStoredBookmarks();
+    const exists = current.some((item) => item.link === article.link);
+    const next = exists
+        ? current.filter((item) => item.link !== article.link)
+        : [{ ...article, isBookmarked: true }, ...current];
+    window.localStorage.setItem(BOOKMARK_KEY, JSON.stringify(next));
+    return next;
 };
 
-export const toggleBookmark = async (id) => {
-    const { data } = await api.post(`/articles/${id}/bookmark`);
-    return data;
+export const updateBookmarkedSummary = (link, summary) => {
+    const current = readStoredBookmarks();
+    if (!current.some((item) => item.link === link)) return current;
+    const next = current.map((item) => (item.link === link ? { ...item, summary } : item));
+    window.localStorage.setItem(BOOKMARK_KEY, JSON.stringify(next));
+    return next;
 };
 
 export const getDailyBrief = async () => {
-    const { data } = await api.get('/daily-brief');
-    return data;
+    const { data, headers } = await api.get('/daily-brief');
+    return { briefs: data, stale: headers['x-brief-stale'] === 'true' };
 };
 
 export const getArticleStats = async () => {
@@ -102,11 +136,50 @@ export const getHealth = async () => {
 
 export const getVideos = async ({ query = '', topics = '', limit = 24 } = {}) => {
     const { data } = await api.get('/videos', {
+        params: { query, topics, limit }
+    });
+    return data;
+};
+
+export const getEditorial = async () => {
+    const { data } = await api.get('/editorial');
+    return data;
+};
+
+export const getArticleSources = async () => {
+    const { data } = await api.get('/article-sources');
+    return data;
+};
+
+export const getKev = async (search = '', page = 1, { ransomware = false } = {}) => {
+    const { data } = await api.get('/cyber/kev', {
         params: {
-            query,
-            topics,
-            limit
+            search: search || undefined,
+            page,
+            ransomware: ransomware ? 'known' : undefined
         }
     });
+    return data;
+};
+
+export const getCert = async (search = '') => {
+    const { data } = await api.get('/cyber/cert', {
+        params: { search: search || undefined }
+    });
+    return data;
+};
+
+export const getBriefArchive = async () => {
+    const { data } = await api.get('/brief-archive');
+    return data;
+};
+
+export const getBriefEdition = async (date) => {
+    const { data } = await api.get(`/brief-archive/${encodeURIComponent(date)}`);
+    return { briefs: data, stale: false };
+};
+
+export const getSourceObservatory = async () => {
+    const { data } = await api.get('/source-observatory');
     return data;
 };

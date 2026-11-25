@@ -1,27 +1,91 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, ShieldAlert, Sun, Moon } from 'lucide-react';
+import {
+    Activity,
+    Bookmark,
+    History,
+    Layers,
+    Menu,
+    Moon,
+    Newspaper,
+    PlayCircle,
+    Radar,
+    Search,
+    ShieldAlert,
+    SlidersHorizontal,
+    Sun,
+    X,
+    Zap
+} from 'lucide-react';
 import clsx from 'clsx';
 import { useQuery } from '@tanstack/react-query';
 import { getHealth } from '../services/api';
+
+const NAV_GROUPS = [
+    {
+        label: 'Veille',
+        items: [
+            { to: '/', label: 'Articles', icon: Newspaper },
+            { to: '/editorial', label: 'Dossiers & tendances', icon: Layers },
+            { to: '/daily-brief', label: 'Brief IA', icon: Zap },
+            { to: '/videos', label: 'Vidéos', icon: PlayCircle }
+        ]
+    },
+    {
+        label: 'Sécurité',
+        items: [
+            { to: '/cyber', label: 'Cyber Radar', icon: Radar },
+            { to: '/breaches', label: 'Fuites de données', icon: ShieldAlert }
+        ]
+    },
+    {
+        label: 'Personnel',
+        items: [
+            { to: '/bookmarks', label: 'Favoris', icon: Bookmark },
+            { to: '/history', label: 'Historique', icon: History }
+        ]
+    },
+    {
+        label: 'Système',
+        items: [
+            { to: '/observatory', label: 'Observatoire', icon: Activity },
+            { to: '/sources', label: 'Sources', icon: SlidersHorizontal }
+        ]
+    }
+];
+
+const PAGE_TITLES = {
+    '/': 'Actualités',
+    '/editorial': 'Dossiers et tendances',
+    '/cyber': 'Cyber Radar',
+    '/daily-brief': 'Brief IA Quotidien',
+    '/videos': 'Vidéos IA & Tech',
+    '/breaches': 'Fuites de données',
+    '/sources': 'Administration des sources',
+    '/observatory': 'Observatoire des sources',
+    '/bookmarks': 'Articles favoris',
+    '/history': 'Historique de lecture'
+};
 
 function NavItem({ to, icon, children, onClick }) {
     const location = useLocation();
     const isActive = location.pathname === to;
     const IconComponent = icon;
+
     return (
         <Link
             to={to}
             onClick={onClick}
+            aria-current={isActive ? 'page' : undefined}
             className={clsx(
-                "flex items-center space-x-3 px-4 py-3 rounded-lg border transition-all duration-300",
+                'flex items-center gap-3 px-3 py-2 rounded-lg border text-sm font-medium transition-colors',
                 isActive
-                    ? "bg-cyan-400/10 text-primary border-cyan-300/25 shadow-[inset_3px_0_0_rgba(34,211,238,0.9)]"
-                    : "text-muted border-transparent hover:bg-cyan-400/[0.08] hover:text-primary hover:border-cyan-300/15"
+                    ? 'news-chip-active font-semibold'
+                    : 'text-secondary border-transparent hover:bg-[var(--color-surface-muted)] hover:text-primary'
             )}
         >
-            <IconComponent size={19} className={clsx(isActive ? "text-accent" : "text-muted")} />
-            <span className="text-sm font-semibold tracking-wide">{children}</span>
+            <IconComponent size={17} aria-hidden="true" className={clsx('shrink-0', isActive ? 'text-accent' : 'text-muted')} />
+            <span className="truncate">{children}</span>
         </Link>
     );
 }
@@ -29,107 +93,166 @@ function NavItem({ to, icon, children, onClick }) {
 export default function Layout({ children, onSearch, search, theme, onToggleTheme }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const location = useLocation();
+
+    useEffect(() => {
+        if (!isSidebarOpen) return undefined;
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                setIsSidebarOpen(false);
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [isSidebarOpen]);
+
     const { data: health, isError: isHealthError } = useQuery({
         queryKey: ['health'],
         queryFn: getHealth,
         refetchInterval: 60000,
         retry: 1
     });
+
     const isOperational = Boolean(health?.status === 'ok' && !health?.rss?.lastError && !isHealthError);
     const supportsSearch = ['/', '/videos', '/breaches'].includes(location.pathname);
 
-    const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+    const toggleSidebar = () => setIsSidebarOpen((open) => !open);
     const closeSidebar = () => setIsSidebarOpen(false);
-
-    const getPageTitle = () => {
-        switch (location.pathname) {
-            case '/': return 'Dashboard';
-            case '/daily-brief': return 'Brief IA Quotidien';
-            case '/videos': return 'Vidéos IA & Tech';
-            case '/breaches': return 'Fuites de données';
-            case '/sources': return 'Sources RSS';
-            case '/bookmarks': return 'Articles favoris';
-            default: return 'Actualités';
-        }
-    };
+    const pageTitle = PAGE_TITLES[location.pathname] || 'Actualités';
 
     return (
         <div className="app-shell flex h-screen font-sans overflow-hidden">
+            <a
+                href="#main-content"
+                className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:px-4 focus:py-2.5 surface-card text-sm font-semibold text-primary"
+            >
+                Aller au contenu principal
+            </a>
+
             {isSidebarOpen && (
                 <div
-                    className="theme-overlay fixed inset-0 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+                    className="theme-overlay fixed inset-0 z-40 lg:hidden transition-opacity"
                     onClick={closeSidebar}
+                    aria-hidden="true"
                 />
             )}
 
-            <aside className={clsx(
-                "fixed inset-y-0 left-0 z-50 w-72 glass-sidebar flex-shrink-0 flex flex-col transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static",
-                isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-            )}>
-                <div className="p-7 flex items-center justify-between border-b theme-divider">
-                    <div className="flex items-center space-x-3">
-                        <div className="bg-cyan-400/10 border border-cyan-300/25 p-2 rounded-lg shadow-lg shadow-cyan-950/30">
-                            <Newspaper className="text-cyan-200" size={24} />
+            <aside
+                aria-label="Menu latéral"
+                className={clsx(
+                    'fixed inset-y-0 left-0 z-50 w-64 glass-sidebar flex-shrink-0 flex flex-col transform transition-transform duration-200 ease-out lg:translate-x-0 lg:static',
+                    isSidebarOpen ? 'translate-x-0 visible' : '-translate-x-full invisible lg:visible'
+                )}
+            >
+                <div className="h-[68px] px-5 flex items-center justify-between border-b theme-divider shrink-0">
+                    <Link
+                        to="/"
+                        onClick={closeSidebar}
+                        className="flex items-center gap-3 rounded-lg py-1 pr-2"
+                    >
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg border theme-border surface-muted text-accent">
+                            <Newspaper size={19} aria-hidden="true" />
                         </div>
                         <div>
-                            <span className="block text-2xl font-black tracking-tighter text-primary leading-none">NewsAI</span>
-                            <span className="block text-[10px] uppercase tracking-[0.28em] text-muted mt-1">Veille techno</span>
+                            <span className="block font-serif text-xl font-bold tracking-tight text-primary leading-none">
+                                NewsAI
+                            </span>
+                            <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted mt-1 whitespace-nowrap">
+                                Veille tech & cyber
+                            </span>
                         </div>
-                    </div>
-                    <button onClick={closeSidebar} className="lg:hidden text-muted hover:text-primary" aria-label="Fermer le menu">
-                        <X size={24} />
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={closeSidebar}
+                        className="lg:hidden rounded-lg p-1.5 text-muted hover:text-primary hover:bg-[var(--color-surface-muted)]"
+                        aria-label="Fermer le menu"
+                    >
+                        <X size={20} aria-hidden="true" />
                     </button>
                 </div>
 
-                <nav className="flex-1 p-5 space-y-2.5 mt-3">
-                    <NavItem to="/" icon={LayoutDashboard} onClick={closeSidebar}>Articles</NavItem>
-                    <NavItem to="/daily-brief" icon={Zap} onClick={closeSidebar}>Brief IA</NavItem>
-                    <NavItem to="/videos" icon={PlayCircle} onClick={closeSidebar}>Vidéos</NavItem>
-                    <NavItem to="/breaches" icon={ShieldAlert} onClick={closeSidebar}>Fuites de données</NavItem>
-                    <NavItem to="/bookmarks" icon={Bookmark} onClick={closeSidebar}>Favoris</NavItem>
-                    <NavItem to="/sources" icon={Rss} onClick={closeSidebar}>Sources</NavItem>
+                <nav aria-label="Navigation principale" className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+                    {NAV_GROUPS.map((group) => (
+                        <div key={group.label}>
+                            <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                                {group.label}
+                            </p>
+                            <div className="space-y-0.5">
+                                {group.items.map((item) => (
+                                    <NavItem key={item.to} to={item.to} icon={item.icon} onClick={closeSidebar}>
+                                        {item.label}
+                                    </NavItem>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
                 </nav>
 
-                <div className="p-5 border-t theme-divider">
-                    <div className="news-panel rounded-xl p-4">
-                        <p className="text-[10px] text-muted font-bold uppercase tracking-[0.22em] mb-2">Status</p>
-                        <div className="flex items-center space-x-2">
-                            <div className={clsx('w-2 h-2 rounded-full shadow-sm', isOperational ? 'bg-emerald-400 shadow-emerald-400/50' : 'bg-amber-400 shadow-amber-400/50')}></div>
-                            <span className="text-sm font-semibold text-secondary">{isOperational ? 'Système opérationnel' : 'Système indisponible'}</span>
+                <div className="p-4 border-t theme-divider shrink-0">
+                    <div className="rounded-lg border theme-border surface-muted px-3.5 py-2.5">
+                        <p className="text-[10px] text-muted font-semibold uppercase tracking-[0.18em]">
+                            État du service
+                        </p>
+                        <div className="mt-1.5 flex items-center gap-2">
+                            <span
+                                aria-hidden="true"
+                                className={clsx(
+                                    'h-2 w-2 rounded-full shrink-0',
+                                    isOperational ? 'bg-emerald-500' : 'bg-amber-500'
+                                )}
+                            />
+                            <span className="text-xs font-semibold text-secondary">
+                                {isOperational ? 'Système opérationnel' : 'Synchronisation dégradée'}
+                            </span>
                         </div>
                     </div>
                 </div>
             </aside>
 
             <div className="flex-1 flex flex-col min-w-0 relative">
-                <header className="h-[72px] glass-header flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30">
-                    <div className="flex items-center space-x-4">
+                <header className="h-[68px] glass-header flex items-center justify-between gap-3 px-4 lg:px-8 sticky top-0 z-30 shrink-0">
+                    <div className="flex items-center gap-3 min-w-0">
                         <button
+                            type="button"
                             onClick={toggleSidebar}
-                            className="p-2 -ml-2 text-muted hover:text-primary lg:hidden transition-colors"
-                            aria-label="Ouvrir le menu"
+                            className="p-2 -ml-2 rounded-lg text-muted hover:text-primary hover:bg-[var(--color-surface-muted)] lg:hidden transition-colors"
+                            aria-label={isSidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+                            aria-expanded={isSidebarOpen}
                         >
-                            <Menu size={24} />
+                            <Menu size={22} aria-hidden="true" />
                         </button>
-                        <h2 className="text-lg font-black text-primary hidden sm:block whitespace-nowrap tracking-tight">
-                            {getPageTitle()}
-                        </h2>
+                        <span className="text-sm font-semibold text-secondary hidden sm:block truncate">
+                            {pageTitle}
+                        </span>
                     </div>
 
-                    {supportsSearch && <div className="relative flex-1 max-w-xl mx-4">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <Search className="h-5 w-5 text-slate-500" />
+                    {supportsSearch && (
+                        <div className="relative flex-1 max-w-xl">
+                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                <Search className="h-4 w-4 text-muted" aria-hidden="true" />
+                            </div>
+                            <input
+                                type="search"
+                                value={search}
+                                onChange={(event) => onSearch && onSearch(event.target.value)}
+                                className="theme-input block w-full pl-10 pr-9 py-2 rounded-lg text-sm"
+                                aria-label="Rechercher des actualités"
+                                placeholder="Rechercher un sujet, outil, CVE…"
+                            />
+                            {search && (
+                                <button
+                                    type="button"
+                                    onClick={() => onSearch && onSearch('')}
+                                    aria-label="Effacer la recherche"
+                                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-muted hover:text-primary"
+                                >
+                                    <X size={15} aria-hidden="true" />
+                                </button>
+                            )}
                         </div>
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(e) => onSearch && onSearch(e.target.value)}
-                            className="theme-input block w-full pl-12 pr-4 py-2.5 rounded-xl leading-5 transition-all duration-300 text-sm sm:text-base"
-                            placeholder="Rechercher des actualités..."
-                        />
-                    </div>}
+                    )}
 
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center shrink-0">
                         <button
                             type="button"
                             onClick={onToggleTheme}
@@ -139,20 +262,17 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                             title={theme === 'dark' ? 'Passer au mode clair' : 'Passer au mode sombre'}
                         >
                             <span className="sr-only">Changer de thème</span>
-                            <Sun size={16} className="absolute left-3 text-amber-400" aria-hidden="true" />
-                            <Moon size={16} className="absolute right-3 text-cyan-300" aria-hidden="true" />
+                            <Sun size={14} className="absolute left-2.5 text-amber-500" aria-hidden="true" />
+                            <Moon size={14} className="absolute right-2.5 text-sky-400" aria-hidden="true" />
                             <span className="theme-toggle-thumb">
-                                {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+                                {theme === 'dark' ? <Moon size={14} aria-hidden="true" /> : <Sun size={14} aria-hidden="true" />}
                             </span>
                         </button>
-                        <div className="hidden md:flex w-10 h-10 rounded-xl bg-cyan-400/10 border border-cyan-300/25 items-center justify-center text-accent font-black shadow-lg shadow-cyan-950/20">
-                            N
-                        </div>
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-4 lg:p-7 scroll-smooth">
-                    <div className="max-w-[1500px] mx-auto">
+                <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+                    <div className="max-w-[1440px] mx-auto">
                         {children}
                     </div>
                 </main>
