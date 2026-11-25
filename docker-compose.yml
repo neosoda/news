@@ -20,6 +20,7 @@ services:
       - SOURCE_FAILURE_COOLDOWN_MINUTES=60
       - SOURCE_DISABLE_AFTER_CONSECUTIVE_FAILURES=12
       - FEED_CONCURRENCY=4
+      - ENABLE_SCHEDULED_BRIEF=${ENABLE_SCHEDULED_BRIEF:-false}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s

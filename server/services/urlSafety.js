@@ -135,7 +135,15 @@ function createPinnedLookup(addresses = []) {
     };
 }
 
+function normalizePublicLink(raw, base) {
+    try {
+        const url = new URL(raw, base);
+        return ALLOWED_PROTOCOLS.has(url.protocol) && !url.username && !url.password ? url.href : null;
+    } catch { return null; }
+}
+
 module.exports = {
+    normalizePublicLink,
     validateOutboundHttpUrl,
     createPinnedLookup
 };

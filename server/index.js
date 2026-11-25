@@ -70,6 +70,13 @@ cron.schedule('*/15 * * * *', () => {
     runFeedRefresh('cron');
 });
 
+// Optional scheduled edition; disabled by default to avoid additional LLM cost.
+if (process.env.ENABLE_SCHEDULED_BRIEF === 'true') {
+    cron.schedule('0 7 * * *', () => {
+        apiRoutes.requestDailyBrief().catch(error => console.error('[BRIEF] Scheduled generation failed:', error.message));
+    }, { timezone: 'Europe/Paris' });
+}
+
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     // Initial fetch on start

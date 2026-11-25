@@ -740,10 +740,12 @@ async function buildDailyBrief(dateKey) {
 
         return briefs;
 }
-router.get('/daily-brief', limitSummarization, async (req, res) => {
+function parisDateKey() {
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
     const part = type => parts.find(p => p.type === type).value;
-    const dateKey = [part('year'), part('month'), part('day')].join('-');
+    return [part('year'), part('month'), part('day')].join('-');
+}
+function requestDailyBrief(dateKey = parisDateKey()) {
     let pending = pendingBriefs.get(dateKey);
     if (!pending && Date.now() >= nextBriefAttemptAt) {
         pending = buildDailyBrief(dateKey).catch(error => {
@@ -752,9 +754,12 @@ router.get('/daily-brief', limitSummarization, async (req, res) => {
         }).finally(() => pendingBriefs.delete(dateKey));
         pendingBriefs.set(dateKey, pending);
     }
+    return pending || Promise.reject(new Error('brief_retry_cooldown'));
+}
+router.get('/daily-brief', limitSummarization, async (req,res) => {
+    const dateKey=parisDateKey();
     try {
-        if (!pending) throw new Error('brief_retry_cooldown');
-        res.json(await pending);
+        res.json(await requestDailyBrief(dateKey));
     } catch (error) {
         console.error('Daily Brief Error:', error);
         const cached = await prisma.dailyBrief.findUnique({ where: { dateKey } }).catch(() => null);
@@ -804,3 +809,4 @@ router.get('/videos', limitVideos, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.requestDailyBrief = requestDailyBrief;

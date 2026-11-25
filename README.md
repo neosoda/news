@@ -288,3 +288,6 @@ Les logiciels, bibliothèques, contenus et installateurs de tiers restent soumis
 
 - `/observatory` : activité et fraîcheur des sources, sans exposer les URL de collecte ni les erreurs internes.
 - `/daily-brief` : sélection des éditions archivées ; validation structurelle des références numériques pour les nouvelles synthèses (ne constitue pas une vérification factuelle).
+
+- Génération anticipée facultative du brief à 07 h (Europe/Paris) : `ENABLE_SCHEDULED_BRIEF=true`. Désactivée par défaut pour éviter une consommation IA supplémentaire non souhaitée.
+- CI navigateur : Chrome headless, base SQLite temporaire, catalogue KEV de test, sans appel aux fournisseurs IA. Captures enregistrées comme artefacts CI.

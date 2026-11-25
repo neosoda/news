@@ -29,3 +29,10 @@ test('pinned lookup supports Node autoSelectFamily', () => {
         assert.deepEqual(addresses, [{ address: '8.8.8.8', family: 4 }]);
     });
 });
+
+test('reader links accept only HTTP(S) and resolve relative feed links',()=>{
+    const {normalizePublicLink}=require('../services/urlSafety');
+    assert.equal(normalizePublicLink('/article','https://example.com/feed'),'https://example.com/article');
+    assert.equal(normalizePublicLink('javascript:alert(1)','https://example.com'),null);
+    assert.equal(normalizePublicLink('https://user:pass@example.com'),null);
+});

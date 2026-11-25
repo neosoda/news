@@ -22,7 +22,7 @@ const {
     jaccardTitleSimilarity,
     TITLE_DEDUP_JACCARD_THRESHOLD
 } = require('./articleDedup');
-const { validateOutboundHttpUrl, createPinnedLookup } = require('./urlSafety');
+const { validateOutboundHttpUrl, createPinnedLookup, normalizePublicLink } = require('./urlSafety');
 const { getCanonicalFeedUrl, getUnsupportedFeedReason } = require('./feedUrlCatalog');
 const {
     containsMojibake,
@@ -1527,7 +1527,8 @@ async function fetchAndProcessFeed(source) {
 
             recentItems++;
 
-            const itemLink = item.link || buildFallbackItemLink(effectiveSource.url, item);
+            const itemLink = normalizePublicLink(item.link || buildFallbackItemLink(effectiveSource.url, item), effectiveSource.url);
+            if (!itemLink) { skippedMissingLink++; continue; }
             if (!item.link) {
                 skippedMissingLink++;
             }
