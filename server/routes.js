@@ -173,6 +173,7 @@ router.get('/articles', (req, res, next) => req.query.bookmarked === 'true' ? re
     const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
     const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
     const sourceId = parsePositiveInt(req.query.sourceId, null);
+    const excludedSources = typeof req.query.excludeSources==='string' ? [...new Set(req.query.excludeSources.split(',').slice(0,100).map(v=>parsePositiveInt(v,null)).filter(Boolean))] : [];
     const maxAllowedDate = new Date(Date.now() + MAX_FUTURE_SKEW_MS);
 
     const where = {};
@@ -208,6 +209,8 @@ router.get('/articles', (req, res, next) => req.query.bookmarked === 'true' ? re
     // Filtre de source
     if (sourceId !== null) {
         conditions.push({ sourceId });
+    } else if (excludedSources.length) {
+        conditions.push({ sourceId: { notIn: excludedSources } });
     }
 
     // Les articles "Fuites de données" ne vivent que dans la page dédiée.

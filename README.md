@@ -291,3 +291,5 @@ Les logiciels, bibliothèques, contenus et installateurs de tiers restent soumis
 
 - Génération anticipée facultative du brief à 07 h (Europe/Paris) : `ENABLE_SCHEDULED_BRIEF=true`. Désactivée par défaut pour éviter une consommation IA supplémentaire non souhaitée.
 - CI navigateur : Chrome headless, base SQLite temporaire, catalogue KEV de test, sans appel aux fournisseurs IA. Captures enregistrées comme artefacts CI.
+
+- Personnalisation locale : masquage de sources, recherches suivies et historique des 100 derniers liens ouverts, effaçable à tout moment. Aucun compte ni synchronisation serveur.

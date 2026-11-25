@@ -69,3 +69,25 @@ jobs:
           name: reader-browser-screenshots
           path: /tmp/newsai-browser-screenshots
           if-no-files-found: ignore
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        directory: [client, server]
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Audit existing dependencies and prepare non-major lockfile proposal
+        run: |
+          npm audit --json > /tmp/audit-before.json || true
+          node -e 'const a=require("/tmp/audit-before.json"); console.log("AUDIT_BEFORE",JSON.stringify(a.vulnerabilities||a.error||{}))'
+          npm audit fix --package-lock-only --ignore-scripts --json > /tmp/audit-fix.json || true
+          npm audit --json > /tmp/audit-after.json || true
+          node -e 'const a=require("/tmp/audit-after.json"); console.log("AUDIT_AFTER",JSON.stringify(a.vulnerabilities||a.error||{}))'
+          git diff --no-color -- package.json package-lock.json

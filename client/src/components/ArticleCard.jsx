@@ -4,6 +4,7 @@ import { fr } from 'date-fns/locale';
 import { ExternalLink, Bot, Sparkles, Bookmark, Newspaper } from 'lucide-react';
 import { summarizeArticle, toggleBookmark, getBookmarks } from '../services/api';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { recordOpened } from '../services/readerPreferences';
 
 const CATEGORY_COLORS = {
     'Cybersecurité': 'bg-red-500/[0.15] text-red-300 border-red-400/25',
@@ -100,7 +101,9 @@ function ArticleArtwork({ article, category }) {
                 <img
                     key={image}
                     src={image}
-                    alt={`Illustration de l’article : ${article.title}`}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
                     className={`absolute inset-0 h-full w-full transition-transform duration-500 group-hover:scale-105 ${candidateIndex === 0 ? 'object-cover opacity-[0.88] saturate-[0.92]' : 'object-contain bg-[var(--color-surface-raised)] p-8'}`}
                     onError={() => setCandidateIndex((current) => current + 1)}
                 />
@@ -143,7 +146,8 @@ export default function ArticleCard({ article }) {
         }
     };
 
-    const resolvedCategory = normalizeCategory(article.category);
+    const rememberOpened = () => { try { queryClient.setQueryData(['reader-history'],recordOpened(article)); } catch { /* Reading the original article must remain possible. */ } };
+    const resolvedCategory = normalizeCategory(article.category || article.source?.category);
     const categoryStyle = CATEGORY_COLORS[resolvedCategory] || CATEGORY_COLORS['Autre'];
     const featured = getFeaturedSource(article.source?.name);
 
@@ -193,7 +197,7 @@ export default function ArticleCard({ article }) {
                 </div>
 
                 <h3 className="text-lg font-black text-primary leading-snug mb-3 tracking-tight group-hover:text-accent transition-colors">
-                    <a href={article.link} target="_blank" rel="noopener noreferrer" className="hover:underline decoration-cyan-300/50 underline-offset-4">
+                    <a href={article.link} onClick={rememberOpened} target="_blank" rel="noopener noreferrer" className="hover:underline decoration-cyan-300/50 underline-offset-4">
                         {article.title}
                     </a>
                 </h3>
@@ -239,6 +243,8 @@ export default function ArticleCard({ article }) {
 
                     <a
                         href={article.link}
+                        onClick={rememberOpened}
+                        aria-label="Lire l’article original"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="ml-auto rounded-lg p-2 text-muted hover:text-accent hover:bg-cyan-400/[0.10] transition-colors"

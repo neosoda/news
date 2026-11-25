@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, ShieldAlert, Sun, Moon, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Rss, Search, Newspaper, Menu, X, Bookmark, Zap, PlayCircle, ShieldAlert, Sun, Moon, TrendingUp, History } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuery } from '@tanstack/react-query';
 import { getHealth } from '../services/api';
@@ -53,6 +53,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
             case '/sources': return 'Sources RSS';
             case '/observatory': return 'Observatoire des sources';
             case '/bookmarks': return 'Articles favoris';
+            case '/history': return 'Historique de lecture';
             default: return 'Actualités';
         }
     };
@@ -93,13 +94,14 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                     <NavItem to="/cyber" icon={ShieldAlert} onClick={closeSidebar}>Cyber Radar</NavItem>
                     <NavItem to="/breaches" icon={ShieldAlert} onClick={closeSidebar}>Fuites de données</NavItem>
                     <NavItem to="/bookmarks" icon={Bookmark} onClick={closeSidebar}>Favoris</NavItem>
+                    <NavItem to="/history" icon={History} onClick={closeSidebar}>Historique</NavItem>
                     <NavItem to="/observatory" icon={Rss} onClick={closeSidebar}>Observatoire</NavItem>
                     <NavItem to="/sources" icon={Rss} onClick={closeSidebar}>Sources</NavItem>
                 </nav>
 
                 <div className="p-5 border-t theme-divider">
                     <div className="news-panel rounded-xl p-4">
-                        <p className="text-[10px] text-muted font-bold uppercase tracking-[0.22em] mb-2">Status</p>
+                        <p className="text-[10px] text-muted font-bold uppercase tracking-[0.22em] mb-2">État du service</p>
                         <div className="flex items-center space-x-2">
                             <div className={clsx('w-2 h-2 rounded-full shadow-sm', isOperational ? 'bg-emerald-400 shadow-emerald-400/50' : 'bg-amber-400 shadow-amber-400/50')}></div>
                             <span className="text-sm font-semibold text-secondary">{isOperational ? 'Système opérationnel' : 'Système indisponible'}</span>

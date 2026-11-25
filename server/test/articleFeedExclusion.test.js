@@ -294,6 +294,8 @@ test('reader discovery endpoints use isolated data and hide management fields', 
         assert.equal(results.pagination.total,1);
         assert.equal(results.data[0].isBookmarked,false);
         assert.equal(results.data[0].source.url,undefined);
+        const excluded=await get('/api/articles?excludeSources='+techSource.id);assert.equal(excluded.pagination.total,0);
+        const selected=await get('/api/articles?sourceId='+techSource.id+'&excludeSources='+techSource.id);assert.equal(selected.pagination.total,1);
         const sources=await get('/api/article-sources');
         assert.ok(sources.some(s=>s.id===techSource.id));
         assert.ok(!sources.some(s=>s.id===breachSource.id));

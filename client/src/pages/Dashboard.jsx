@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getArticles, getArticleStats, getArticleSources, getEditorial } from '../services/api';
 import ArticleCard from '../components/ArticleCard';
+import { getHiddenSources, saveHiddenSources } from '../services/readerPreferences';
 
 const KEY='newsai-followed-keywords-v1';
 function initialKeywords() {
@@ -13,13 +14,14 @@ export default function Dashboard({ search, category, setCategory }) {
     const period=params.get('period')||'';
     const sourceId=params.get('source')||'';
     const [followed,setFollowed]=useState(initialKeywords);
+    const [hidden,setHidden]=useState(getHiddenSources);
     const [storageError,setStorageError]=useState(false);
     const {data:stats}=useQuery({queryKey:['article-stats'],queryFn:getArticleStats,staleTime:60000});
     const {data:sources=[],isError:sourcesError}=useQuery({queryKey:['article-sources'],queryFn:getArticleSources,staleTime:300000});
     const {data:editorial}=useQuery({queryKey:['editorial'],queryFn:getEditorial,staleTime:300000});
     const {data,fetchNextPage,hasNextPage,isFetchingNextPage,status,refetch,isFetchNextPageError}=useInfiniteQuery({
-        queryKey:['articles',search,category,period,sourceId],
-        queryFn:({pageParam})=>getArticles(pageParam,search,category,{period,sourceId}),
+        queryKey:['articles',search,category,period,sourceId,hidden],
+        queryFn:({pageParam})=>getArticles(pageParam,search,category,{period,sourceId,excludeSources:hidden}),
         initialPageParam:1,
         getNextPageParam:last=>last.pagination.page<last.pagination.pages?last.pagination.page+1:undefined
     });
@@ -34,6 +36,7 @@ export default function Dashboard({ search, category, setCategory }) {
         try {localStorage.setItem(KEY,JSON.stringify(next));setFollowed(next);setStorageError(false);}catch{setStorageError(true);}
     };
     const reset=()=>{setParams({});setCategory('');};
+    const toggleHidden=id=>{const next=hidden.includes(id)?hidden.filter(x=>x!==id):[...hidden,id].slice(0,100);try{saveHiddenSources(next);setHidden(next);setStorageError(false);}catch{setStorageError(true);}};
     return <div className="mx-auto max-w-[1400px] space-y-7">
         <header className="border-b-2 theme-border pb-5 flex flex-wrap items-end justify-between gap-4">
             <div><p className="text-xs uppercase tracking-widest font-semibold text-accent">La veille technologique</p>
@@ -51,8 +54,9 @@ export default function Dashboard({ search, category, setCategory }) {
                 <button type="button" className="text-sm text-secondary underline py-2" onClick={reset}>Réinitialiser</button>
                 {search.trim()&&<button type="button" className="text-sm text-accent underline py-2" onClick={toggleFollow} aria-pressed={followed.includes(search.trim())}>{followed.includes(search.trim())?'Ne plus suivre':'Suivre cette recherche'}</button>}
             </div>
+            <details className="text-sm text-secondary"><summary className="cursor-pointer">Personnaliser les sources ({hidden.length} masquées)</summary><div className="max-h-56 overflow-auto grid sm:grid-cols-2 lg:grid-cols-3 gap-2 border theme-border p-3 mt-2">{sources.map(s=><label key={s.id} className="flex gap-2 items-center"><input type="checkbox" checked={!hidden.includes(s.id)} onChange={()=>toggleHidden(s.id)}/>{s.name}</label>)}</div><p className="text-xs mt-2">Les sources masquées restent consultables en les sélectionnant explicitement.</p></details>
             {sourcesError&&<p role="status" className="text-sm text-secondary">Liste des sources indisponible.</p>}
-            {storageError&&<p role="alert" className="text-sm text-secondary">Impossible d'enregistrer ce suivi dans le navigateur.</p>}
+            {storageError&&<p role="alert" className="text-sm text-secondary">Impossible d'enregistrer vos préférences dans le navigateur.</p>}
             {followed.length>0&&<div className="flex flex-wrap gap-2 items-center"><span className="text-xs text-muted">Mes recherches</span>{followed.map(term=><button type="button" key={term} className="border theme-border rounded px-2 py-1 text-sm text-secondary" onClick={()=>setFilter('q',term)}>{term}</button>)}</div>}
         </section>
         <div className="grid xl:grid-cols-[minmax(0,1fr)_260px] gap-8">

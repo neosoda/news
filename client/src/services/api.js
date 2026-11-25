@@ -36,7 +36,7 @@ export const clearAdminToken = () => {
 };
 
 export const getArticles = async (page = 1, search = '', category = '', filters = {}) => {
-    const { data } = await api.get('/articles', { params: { page, search, category, period:filters.period, sourceId:filters.sourceId } });
+    const { data } = await api.get('/articles', { params: { page, search, category, period:filters.period, sourceId:filters.sourceId, excludeSources:filters.excludeSources?.join(',') } });
     return data;
 };
 
