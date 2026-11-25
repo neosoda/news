@@ -12,7 +12,7 @@ Agrégation RSS · Briefs IA · Cybersécurité · Vidéos · Fuites de données
 
 <br />
 
-[![Node.js](https://img.shields.io/badge/Node.js-20-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-19-087EA4?style=for-the-badge&logo=react&logoColor=white)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](#-déploiement-avec-docker)
 [![Self-hosted](https://img.shields.io/badge/Self--hosted-Yes-27c4c9?style=for-the-badge)](#-déploiement-avec-docker)
@@ -38,12 +38,14 @@ L'objectif : **passer moins de temps à chercher l'information et plus de temps 
 
 | | Espace | Ce que vous y trouvez |
 |:---:|---|---|
-| 📰 | **Actualités** | Flux RSS consolidé, classement, recherche, catégories, statistiques et défilement continu. |
-| ⚡ | **Brief IA quotidien** | Synthèses structurées par thème, avec points clés et renvois vers les articles sources. |
-| 🛡️ | **Fuites de données** | Espace dédié aux alertes publiées par Bonjour la fuite, Fuites Infos et FrenchBreaches. |
-| 🎬 | **Vidéos** | Veille IA, IT, tech et développement depuis des chaînes YouTube via leurs flux. |
-| 🔖 | **Favoris** | Favoris individuels stockés dans le navigateur, sans compte. |
-| 📡 | **Sources RSS** | Ajout et suppression de sources, état de santé des flux, relance et réactivation, sous accès administrateur. |
+| 📰 | **Actualités** | Flux RSS consolidé, recherche multi-termes, filtres partageables par URL (catégorie, période, source), suivi local de recherches et masquage de sources. |
+| 🗂️ | **Dossiers & tendances** | Regroupements automatiques de sujets repris par plusieurs sources sur 48 h et mots-clés en progression (sans appel IA). |
+| ⚡ | **Brief IA quotidien** | Synthèses structurées par thème, validation des citations numériques `[n]`, cache de secours et consultation des éditions archivées. |
+| 📡 | **Cyber Radar** | Catalogue officiel **CISA KEV** (cache 1 h, filtre rançongiciel, miroir officiel) et derniers avis **CERT-FR** avec corrélation des CVE. |
+| 🛡️ | **Fuites de données** | Espace dédié aux alertes publiées par Bonjour la fuite, Fuites Infos et FrenchBreaches, isolées du fil principal. |
+| 🎬 | **Vidéos** | Veille IA, IT, tech et développement depuis des chaînes YouTube via leurs flux RSS mis en cache. |
+| 🔖 | **Favoris & Historique** | Favoris individuels et historique des 100 derniers liens ouverts, stockés localement dans le navigateur, sans compte. |
+| 📊 | **Observatoire & Sources** | Suivi public de l'activité des flux sur 7 jours (`/observatory`) et administration complète des sources RSS sous jeton admin (`/sources`). |
 
 <sub>Interface responsive avec thème clair/sombre ; les fonctions IA nécessitent au moins une clé de fournisseur configurée.</sub>
 
@@ -223,24 +225,30 @@ Quelques endpoints utiles pour superviser ou intégrer NewsAI :
 | Méthode | Route | Utilité |
 |---|---|---|
 | `GET` | `/api/health` | État de l'API, de SQLite et de l'actualisation RSS |
-| `GET` | `/api/articles` | Articles, recherche, pagination et filtres |
-| `GET` | `/api/articles/stats` | Statistiques de la veille |
-| `GET` | `/api/daily-brief` | Brief IA quotidien |
-| `GET` | `/api/videos` | Vidéos par thème et mots-clés |
-| `GET` | `/api/bookmarks` | Articles favoris |
-| `POST` | `/api/articles/:id/summarize` | Résumé IA d'un article |
+| `GET` | `/api/articles` | Articles, recherche multi-termes, pagination et filtres (`period`, `sourceId`, `excludeSources`) |
+| `GET` | `/api/articles/stats` | Statistiques de la veille par catégorie |
+| `GET` | `/api/article-sources` | Liste publique des sources actives (sans URL interne) |
+| `GET` | `/api/editorial` | Dossiers multisources et tendances sur 48 h (max 500 articles, sans IA) |
+| `GET` | `/api/daily-brief` | Brief IA quotidien (avec repli sur dernier cache valide) |
+| `GET` | `/api/brief-archive` | Liste des éditions archivées du brief (`GET /api/brief-archive/:date` pour une date) |
+| `GET` | `/api/cyber/kev` | Catalogue officiel CISA KEV (cache 1 h, filtre `search` et `ransomware=known`) |
+| `GET` | `/api/cyber/cert` | Derniers avis CERT-FR avec extraction CVE et corrélation KEV |
+| `GET` | `/api/source-observatory` | Activité et fraîcheur des flux sur 7 jours (sans URL ni erreurs internes) |
+| `GET` | `/api/videos` | Vidéos par thème et mots-clés (flux YouTube mis en cache 15 min) |
+| `POST` | `/api/articles/:id/summarize` | Résumé IA d'un article (requêtes simultanées fusionnées) |
 | `GET` | `/api/sources/health` | État des sources (**jeton admin obligatoire**) |
 | `POST` | `/api/sources/refresh` | Demande d'actualisation (**jeton admin obligatoire**) |
 
-Les autres opérations de gestion des sources utilisent également le jeton `X-Admin-Token`. Les favoris individuels sont stockés localement par navigateur. Les anciennes entrées en base sont conservées et accessibles uniquement avec le jeton administrateur (`GET /api/bookmarks`, `POST /api/articles/:id/bookmark`, `GET /api/articles?bookmarked=true`). Aucun transfert automatique de favoris partagés n'est effectué.
+Les autres opérations de gestion des sources utilisent également le jeton `X-Admin-Token`. Les favoris individuels, recherches suivies, sources masquées et l'historique des 100 derniers liens ouverts sont stockés localement par navigateur, sans compte. Les anciennes entrées de favoris en base sont conservées et accessibles uniquement avec le jeton administrateur (`GET /api/bookmarks`, `POST /api/articles/:id/bookmark`, `GET /api/articles?bookmarked=true`).
 
 ## 🔐 Sécurité et exploitation
 
 - **Administration des sources protégée** par `ADMIN_TOKEN`, transmis dans l'en-tête `X-Admin-Token` et gardé en `sessionStorage` côté navigateur.
-- **Validation des URL** des sources et protections contre certaines requêtes SSRF, restriction CORS et limitation du nombre de requêtes sur les opérations concernées.
+- **Validation des URL** des sources et protections SSRF (blocage IP privées/non-globales, DNS pinning, blocage identifiants dans l'URL), restriction CORS, en-têtes CSP et limitation du nombre de requêtes.
+- **Génération programmée facultative** : `ENABLE_SCHEDULED_BRIEF=true` active une édition automatique quotidienne à 07 h 00 (`Europe/Paris`) ; désactivée par défaut pour éviter toute consommation IA non souhaitée.
 - **Données persistantes** dans SQLite : sauvegardez le volume Docker avant toute migration importante.
-- **Fonctionnement dépendant des tiers** : la collecte, YouTube, la traduction et la génération IA dépendent de la disponibilité des services contactés.
-- **Synthèses IA à vérifier** : les briefs facilitent la lecture mais les articles originaux restent la référence.
+- **Fonctionnement dépendant des tiers** : la collecte, YouTube, CISA KEV, la traduction et la génération IA dépendent de la disponibilité des services contactés. Les échéances CISA concernent les agences fédérales américaines et ne constituent pas une obligation locale.
+- **Synthèses IA et regroupements à vérifier** : les briefs facilitent la lecture (citations numériques validées structurellement) et les dossiers sont heuristiques, mais les articles originaux restent la référence.
 
 ## Questions fréquentes
 
@@ -264,8 +272,6 @@ L'utilisation personnelle, l'auto-hébergement non commercial et les modificatio
 
 Les logiciels, bibliothèques, contenus et installateurs de tiers restent soumis à **leurs propres licences**, qui ne sont pas remplacées par celle du projet.
 
-
-
 ---
 
 <div align="center">
@@ -279,19 +285,3 @@ Les logiciels, bibliothèques, contenus et installateurs de tiers restent soumis
 <a href="https://github.com/neosoda/news#readme">↑ Retour en haut</a>
 
 </div>
-
-### Dossiers, recherche et Cyber Radar
-
-- `/editorial` : rapprochements de titres entre sources, tendances mesurées sur deux fenêtres de 24 h (échantillon maximal de 500 articles), sans génération IA.
-- `/` : recherche multi-termes, filtres de source et de période partageables par URL, suivi local de 20 recherches.
-- `/cyber` : catalogue officiel CISA KEV (cache une heure, repli sur le miroir officiel et dernier cache valide) et publications CERT-FR issues du moteur RSS existant. Les échéances CISA sont américaines, pas des obligations locales. Aucune évaluation automatique du risque de votre parc.
-
-- `/observatory` : activité et fraîcheur des sources, sans exposer les URL de collecte ni les erreurs internes.
-- `/daily-brief` : sélection des éditions archivées ; validation structurelle des références numériques pour les nouvelles synthèses (ne constitue pas une vérification factuelle).
-
-- Génération anticipée facultative du brief à 07 h (Europe/Paris) : `ENABLE_SCHEDULED_BRIEF=true`. Désactivée par défaut pour éviter une consommation IA supplémentaire non souhaitée.
-- CI navigateur : Chrome headless, base SQLite temporaire, catalogue KEV de test, sans appel aux fournisseurs IA. Captures enregistrées comme artefacts CI.
-
-- Personnalisation locale : masquage de sources, recherches suivies et historique des 100 derniers liens ouverts, effaçable à tout moment. Aucun compte ni synchronisation serveur.
-
-- Interface éditoriale : cartes sans illustration artificielle, navigation clavier améliorée et chargement différé des pages secondaires.
