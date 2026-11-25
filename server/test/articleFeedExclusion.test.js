@@ -284,31 +284,55 @@ test('Daily-brief-shaped query excludes breach articles', async () => {
 
 test('reader discovery endpoints use isolated data and hide management fields', async () => {
     await resetDatabase();
-    const {techSource,breachSource,techArticle}=await seedFixture();
-    await prisma.article.update({where:{id:techArticle.id},data:{date:new Date(),isBookmarked:true}});
-    const server=await listen(buildApp());
+    const { techSource, breachSource, techArticle } = await seedFixture();
+    await prisma.article.update({
+        where: { id: techArticle.id },
+        data: { date: new Date(), isBookmarked: true }
+    });
+    await prisma.source.update({
+        where: { id: techSource.id },
+        data: { cooldownUntil: new Date(Date.now() + 30 * 60 * 1000) }
+    });
+    const server = await listen(buildApp());
     try {
-        const origin='http://127.0.0.1:'+server.address().port;
-        const get=async path=>{const r=await fetch(origin+path);assert.equal(r.status,200,path);return r.json();};
-        const results=await get('/api/articles?period=24h&sourceId='+techSource.id+'&search=CVE%20critique');
-        assert.equal(results.pagination.total,1);
-        assert.equal(results.data[0].isBookmarked,false);
-        assert.equal(results.data[0].source.url,undefined);
-        const excluded=await get('/api/articles?excludeSources='+techSource.id);assert.equal(excluded.pagination.total,0);
-        const selected=await get('/api/articles?sourceId='+techSource.id+'&excludeSources='+techSource.id);assert.equal(selected.pagination.total,1);
-        const sources=await get('/api/article-sources');
-        assert.ok(sources.some(s=>s.id===techSource.id));
-        assert.ok(!sources.some(s=>s.id===breachSource.id));
-        assert.ok(sources.every(s=>s.url===undefined));
-        const observatory=await get('/api/source-observatory');
-        assert.equal(observatory.find(s=>s.id===techSource.id).articles7d,1);
-        assert.ok(observatory.every(s=>s.url===undefined&&s.lastError===undefined));
-        const editorial=await get('/api/editorial');
-        assert.equal(editorial.sampleSize,1);
-        const archive=await get('/api/brief-archive');
+        const origin = `http://127.0.0.1:${server.address().port}`;
+        const get = async (route) => {
+            const response = await fetch(origin + route);
+            assert.equal(response.status, 200, route);
+            return response.json();
+        };
+        const results = await get(`/api/articles?period=24h&sourceId=${techSource.id}&search=CVE%20critique`);
+        assert.equal(results.pagination.total, 1);
+        assert.equal(results.data[0].isBookmarked, false);
+        assert.equal(results.data[0].source.url, undefined);
+
+        const excluded = await get(`/api/articles?excludeSources=${techSource.id}`);
+        assert.equal(excluded.pagination.total, 0);
+
+        const selected = await get(`/api/articles?sourceId=${techSource.id}&excludeSources=${techSource.id}`);
+        assert.equal(selected.pagination.total, 1);
+
+        const sources = await get('/api/article-sources');
+        assert.ok(sources.some((s) => s.id === techSource.id));
+        assert.ok(!sources.some((s) => s.id === breachSource.id));
+        assert.ok(sources.every((s) => s.url === undefined));
+
+        const observatory = await get('/api/source-observatory');
+        const techObs = observatory.find((s) => s.id === techSource.id);
+        assert.equal(techObs.articles7d, 1);
+        assert.equal(techObs.isCoolingDown, true);
+        assert.equal(techObs.cooldownUntil, undefined);
+        assert.ok(observatory.every((s) => s.url === undefined && s.lastError === undefined));
+
+        const editorial = await get('/api/editorial');
+        assert.equal(editorial.sampleSize, 1);
+
+        const archive = await get('/api/brief-archive');
         assert.ok(Array.isArray(archive));
-        assert.equal((await fetch(origin+'/api/brief-archive/invalid')).status,400);
-    } finally {await closeServer(server);}
+        assert.equal((await fetch(`${origin}/api/brief-archive/invalid`)).status, 400);
+    } finally {
+        await closeServer(server);
+    }
 });
 
 test.after(async () => {
