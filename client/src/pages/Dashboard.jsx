@@ -35,7 +35,7 @@ export default function Dashboard({ search, category, setCategory }) {
         const next=followed.includes(value)?followed.filter(x=>x!==value):[value,...followed].slice(0,20);
         try {localStorage.setItem(KEY,JSON.stringify(next));setFollowed(next);setStorageError(false);}catch{setStorageError(true);}
     };
-    const reset=()=>{setParams({});setCategory('');};
+    const reset=()=>setParams({},{replace:true});
     const toggleHidden=id=>{const next=hidden.includes(id)?hidden.filter(x=>x!==id):[...hidden,id].slice(0,100);try{saveHiddenSources(next);setHidden(next);setStorageError(false);}catch{setStorageError(true);}};
     return <div className="mx-auto max-w-[1400px] space-y-7">
         <header className="border-b-2 theme-border pb-5 flex flex-wrap items-end justify-between gap-4">
