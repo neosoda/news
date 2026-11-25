@@ -31,6 +31,8 @@ const {
 } = require('./encoding');
 
 const FEED_TIMEOUT_MS = 10000;
+const FEED_MAX_BYTES = 5 * 1024 * 1024;
+const FEED_MAX_ITEMS = 200;
 const MAX_SAFE_REDIRECTS = 5;
 const MAX_FUTURE_SKEW_MS = 6 * 60 * 60 * 1000;
 const IMAGE_RECOVERY_TIMEOUT_MS = 5000;
@@ -1197,6 +1199,8 @@ async function fetchFeedXml(source) {
                     'Accept': 'application/rss+xml, application/xml, text/xml, */*'
                 },
                 timeout: FEED_TIMEOUT_MS,
+                maxContentLength: FEED_MAX_BYTES,
+                proxy: false,
                 lookup: createPinnedLookup(currentValidation.addresses),
                 // Follow redirects manually so each destination is DNS-validated and pinned.
                 maxRedirects: 0,
@@ -1510,7 +1514,7 @@ async function fetchAndProcessFeed(source) {
         let skippedMissingLink = 0;
         let repairedExisting = 0;
 
-        for (const item of feed.items) {
+        for (const item of feed.items.slice(0, FEED_MAX_ITEMS)) {
             const articleDate = sanitizeArticleDate(getItemDate(item) || new Date());
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -1666,6 +1670,7 @@ async function fetchAndProcessFeed(source) {
                             const response = await axios.get(linkValidation.normalizedUrl, {
                                 timeout: IMAGE_RECOVERY_TIMEOUT_MS,
                                 lookup: createPinnedLookup(linkValidation.addresses),
+                                proxy: false,
                                 maxContentLength: IMAGE_RECOVERY_MAX_BYTES,
                                 maxBodyLength: IMAGE_RECOVERY_MAX_BYTES,
                                 maxRedirects: 0,

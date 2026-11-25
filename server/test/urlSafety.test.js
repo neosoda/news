@@ -15,3 +15,17 @@ test('SSRF protection blocks loopback IPv6 destinations', async () => {
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'private_address_blocked');
 });
+
+test('rejects mapped IPv4, non-global IPv6 and URL credentials', async () => {
+    for (const url of ['http://[::ffff:127.0.0.1]/', 'http://[::ffff:a00:1]/', 'http://[ff02::1]/', 'http://[2002:a00:1::1]/', 'https://user:pass@example.com/']) {
+        assert.equal((await validateOutboundHttpUrl(url, { resolveDns: false })).ok, false, url);
+    }
+    assert.equal((await validateOutboundHttpUrl('https://[2606:4700::1111]/')).ok, true);
+});
+test('pinned lookup supports Node autoSelectFamily', () => {
+    const lookup = require('../services/urlSafety').createPinnedLookup(['8.8.8.8']);
+    lookup('example.com', { all: true }, (error, addresses) => {
+        assert.ifError(error);
+        assert.deepEqual(addresses, [{ address: '8.8.8.8', family: 4 }]);
+    });
+});

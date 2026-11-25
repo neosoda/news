@@ -301,7 +301,7 @@ Règles :
         return repairMojibake(raw);
     } catch (error) {
         console.error(`Daily Brief Error (${category}):`, error.message, error.failures || '');
-        return 'Impossible de générer le résumé pour le moment.';
+        throw error;
     }
 }
 

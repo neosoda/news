@@ -49,8 +49,14 @@ function requireAdmin(req, res, next) {
 
 function createRateLimiter({ limit, windowMs = DEFAULT_ADMIN_WINDOW_MS, key = (req) => req.ip }) {
     const requests = new Map();
+    let nextSweep = 0;
     return (req, res, next) => {
         const now = Date.now();
+        if (now >= nextSweep) {
+            for (const [id, entry] of requests) if (entry.resetAt <= now) requests.delete(id);
+            nextSweep = now + Math.min(windowMs, 60000);
+        }
+        if (requests.size >= 10000 && !requests.has(key(req) || 'unknown')) return res.status(429).json({ error: 'Trop de requêtes.', code: 'rate_limited' });
         const requestKey = key(req) || 'unknown';
         const current = requests.get(requestKey);
         const entry = current && current.resetAt > now ? current : { count: 0, resetAt: now + windowMs };
@@ -68,5 +74,7 @@ module.exports = {
     createCorsOptions,
     requireAdmin,
     limitAdminMutation: createRateLimiter({ limit: 30 }),
-    limitSummarization: createRateLimiter({ limit: 20 })
+    limitSummarization: createRateLimiter({ limit: 20 }),
+    limitAIGeneration: createRateLimiter({ limit: 60, key: () => 'global' }),
+    limitVideos: createRateLimiter({ limit: 60 })
 };

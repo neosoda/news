@@ -30,20 +30,10 @@ function isPrivateIPv4(address) {
 
 function isPrivateIPv6(address) {
     const normalized = address.toLowerCase();
-    const mappedIpv4 = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mappedIpv4) {
-        return isPrivateIPv4(mappedIpv4[1]);
-    }
-    return (
-        normalized === '::' ||
-        normalized === '::1' ||
-        normalized.startsWith('fc') ||
-        normalized.startsWith('fd') ||
-        normalized.startsWith('fe8') ||
-        normalized.startsWith('fe9') ||
-        normalized.startsWith('fea') ||
-        normalized.startsWith('feb')
-    );
+    const first = Number.parseInt(normalized.split(':')[0], 16);
+    // Reject non-global and transition addresses, including mapped IPv4.
+    return !Number.isFinite(first) || first < 0x2000 || first > 0x3fff ||
+        /^2001:(?:0|db8):/.test(normalized) || normalized.startsWith('2002:');
 }
 
 function isPrivateOrLoopbackAddress(address) {
@@ -94,6 +84,7 @@ async function validateOutboundHttpUrl(rawUrl, options = {}) {
         return { ok: false, reason: 'url_invalid' };
     }
 
+    if (parsed.username || parsed.password) return { ok: false, reason: 'credentials_not_allowed' };
     if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
         return { ok: false, reason: 'protocol_not_allowed' };
     }
@@ -133,7 +124,11 @@ function createPinnedLookup(addresses = []) {
     const address = addresses[0];
     if (!address) return undefined;
     const family = net.isIP(address);
-    return (hostname, options, callback) => callback(null, address, family);
+    return (hostname, options, callback) => {
+        if (typeof options === 'function') { callback = options; options = {}; }
+        if (options?.all) return callback(null, [{ address, family }]);
+        return callback(null, address, family);
+    };
 }
 
 module.exports = {
