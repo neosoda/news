@@ -241,3 +241,13 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Editorial surfaces: restrained contrast, clear reading hierarchy. */
+.surface-card, .news-panel, .glass-sidebar, .glass-header { box-shadow: none; backdrop-filter: none; }
+.surface-card { border-radius: 6px; }
+:root { --color-text-muted: #94a3b8; }
+:root[data-theme='light'] { --color-text-muted: #526275; }
+:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

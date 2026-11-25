@@ -83,7 +83,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                     </button>
                 </div>
 
-                <nav className="flex-1 p-5 space-y-2.5 mt-3">
+                <nav aria-label="Navigation principale" className="flex-1 overflow-y-auto p-4 space-y-1 mt-3">
                     <NavItem to="/" icon={LayoutDashboard} onClick={closeSidebar}>Articles</NavItem>
                     <NavItem to="/editorial" icon={TrendingUp} onClick={closeSidebar}>Dossiers et tendances</NavItem>
                     <NavItem to="/daily-brief" icon={Zap} onClick={closeSidebar}>Brief IA</NavItem>
@@ -110,7 +110,8 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                         <button
                             onClick={toggleSidebar}
                             className="p-2 -ml-2 text-muted hover:text-primary lg:hidden transition-colors"
-                            aria-label="Ouvrir le menu"
+                            aria-label={isSidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+                            aria-expanded={isSidebarOpen}
                         >
                             <Menu size={24} />
                         </button>
@@ -155,7 +156,7 @@ export default function Layout({ children, onSearch, search, theme, onToggleThem
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-4 lg:p-7 scroll-smooth">
+                <main id="main-content" className="flex-1 overflow-y-auto p-4 lg:p-7 scroll-smooth">
                     <div className="max-w-[1500px] mx-auto">
                         {children}
                     </div>

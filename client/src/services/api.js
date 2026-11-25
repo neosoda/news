@@ -35,8 +35,8 @@ export const clearAdminToken = () => {
     applyAdminToken('');
 };
 
-export const getArticles = async (page = 1, search = '', category = '') => {
-    const { data } = await api.get('/articles', { params: { page, search, category } });
+export const getArticles = async (page = 1, search = '', category = '', filters = {}) => {
+    const { data } = await api.get('/articles', { params: { page, search, category, period:filters.period, sourceId:filters.sourceId } });
     return data;
 };
 
@@ -118,3 +118,5 @@ export const getVideos = async ({ query = '', topics = '', limit = 24 } = {}) =>
 };
 
 export const getEditorial = async () => (await api.get('/editorial')).data;
+
+export const getArticleSources = async () => (await api.get('/article-sources')).data;

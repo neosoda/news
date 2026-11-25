@@ -1,166 +1,76 @@
-import React from 'react';
+import { useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useInView } from 'react-intersection-observer';
-import { getArticles, getArticleStats } from '../services/api';
+import { Link, useSearchParams } from 'react-router-dom';
+import { getArticles, getArticleStats, getArticleSources, getEditorial } from '../services/api';
 import ArticleCard from '../components/ArticleCard';
-import { Loader2, TrendingUp, Filter, Newspaper, Layers3 } from 'lucide-react';
 
+const KEY='newsai-followed-keywords-v1';
+function initialKeywords() {
+    try { const v=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(v)?v.filter(x=>typeof x==='string').slice(0,20):[]; } catch { return []; }
+}
 export default function Dashboard({ search, category, setCategory }) {
-    const { ref, inView } = useInView();
-
-    const { data: stats } = useQuery({
-        queryKey: ['article-stats'],
-        queryFn: getArticleStats,
-        refetchInterval: 60000
+    const [params,setParams]=useSearchParams();
+    const period=params.get('period')||'';
+    const sourceId=params.get('source')||'';
+    const [followed,setFollowed]=useState(initialKeywords);
+    const [storageError,setStorageError]=useState(false);
+    const {data:stats}=useQuery({queryKey:['article-stats'],queryFn:getArticleStats,staleTime:60000});
+    const {data:sources=[],isError:sourcesError}=useQuery({queryKey:['article-sources'],queryFn:getArticleSources,staleTime:300000});
+    const {data:editorial}=useQuery({queryKey:['editorial'],queryFn:getEditorial,staleTime:300000});
+    const {data,fetchNextPage,hasNextPage,isFetchingNextPage,status,refetch,isFetchNextPageError}=useInfiniteQuery({
+        queryKey:['articles',search,category,period,sourceId],
+        queryFn:({pageParam})=>getArticles(pageParam,search,category,{period,sourceId}),
+        initialPageParam:1,
+        getNextPageParam:last=>last.pagination.page<last.pagination.pages?last.pagination.page+1:undefined
     });
-
-    const {
-        data,
-        fetchNextPage,
-        hasNextPage,
-        isFetchingNextPage,
-        status
-    } = useInfiniteQuery({
-        queryKey: ['articles', search, category],
-        queryFn: ({ pageParam = 1 }) => getArticles(pageParam, search, category),
-        getNextPageParam: (lastPage) => {
-            return lastPage.pagination.page < lastPage.pagination.pages
-                ? lastPage.pagination.page + 1
-                : undefined;
-        }
-    });
-
-    const availableCategories = React.useMemo(() => {
-        const statsByCategory = stats?.stats || {};
-        return Object.keys(statsByCategory).sort(
-            (a, b) => (statsByCategory[b] || 0) - (statsByCategory[a] || 0)
-        );
-    }, [stats]);
-
-    React.useEffect(() => {
-        if (inView && hasNextPage) {
-            fetchNextPage();
-        }
-    }, [inView, fetchNextPage, hasNextPage]);
-
-    const totalArticles = data?.pages[0]?.pagination.total || 0;
-
-    return (
-        <div className="space-y-7">
-            <section className="news-panel rounded-xl p-5 lg:p-6">
-                <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
-                    <div>
-                        <div className="flex items-center space-x-2 text-cyan-300 font-black uppercase tracking-[0.28em] text-[10px] mb-3">
-                            <TrendingUp size={14} />
-                            <span>Tendances</span>
-                        </div>
-                        <h1 className="text-3xl sm:text-5xl font-black text-primary tracking-tight">
-                            Actualites <span className="text-cyan-200">Tech & IA</span>
-                        </h1>
-                        <p className="mt-3 max-w-2xl text-sm leading-6 text-secondary">
-                            Une vue compacte pour scanner les signaux importants, filtrer vite et garder le fil de la veille.
-                        </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 min-w-full xl:min-w-[420px]">
-                        <div className="rounded-xl border theme-border surface-muted p-4">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted">Articles</p>
-                            <p className="mt-2 text-2xl font-black text-primary">{totalArticles}</p>
-                        </div>
-                        <div className="rounded-xl border theme-border surface-muted p-4">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted">Catégories</p>
-                            <p className="mt-2 text-2xl font-black text-primary">{availableCategories.length}</p>
-                        </div>
-                        <div className="rounded-xl border theme-border surface-muted p-4 col-span-2 sm:col-span-1">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted">Vue</p>
-                            <p className="mt-2 text-sm font-bold text-emerald-300">Flux quotidien</p>
-                        </div>
-                    </div>
-                </div>
+    const categories=Object.keys(stats?.stats||{}).sort((a,b)=>stats.stats[b]-stats.stats[a]);
+    const articles=[...new Map((data?.pages.flatMap(page=>page.data)||[]).map(a=>[a.id,a])).values()];
+    const total=data?.pages[0]?.pagination.total;
+    const setFilter=(key,value)=>setParams(old=>{const next=new URLSearchParams(old);if(value)next.set(key,value);else next.delete(key);return next;},{replace:true});
+    const toggleFollow=()=>{
+        const value=search.trim();
+        if(!value)return;
+        const next=followed.includes(value)?followed.filter(x=>x!==value):[value,...followed].slice(0,20);
+        try {localStorage.setItem(KEY,JSON.stringify(next));setFollowed(next);setStorageError(false);}catch{setStorageError(true);}
+    };
+    const reset=()=>{setParams({});setCategory('');};
+    return <div className="mx-auto max-w-[1400px] space-y-7">
+        <header className="border-b-2 theme-border pb-5 flex flex-wrap items-end justify-between gap-4">
+            <div><p className="text-xs uppercase tracking-widest font-semibold text-accent">La veille technologique</p>
+                <h1 className="font-serif text-4xl sm:text-5xl leading-tight text-primary mt-2">Tech & IA, au quotidien</h1>
+                <p className="text-secondary mt-2 text-sm">Les dernières publications, leurs sources et les sujets qui comptent.</p></div>
+            <Link to="/daily-brief" className="border theme-border px-4 py-2 text-sm font-semibold hover:underline">Lire le brief du jour →</Link>
+        </header>
+        <section aria-label="Filtres de recherche" className="space-y-3">
+            <div className="flex flex-wrap gap-2 border-b theme-border pb-3">
+                {['',...categories].map(cat=><button type="button" key={cat} aria-pressed={category===cat} onClick={()=>setCategory(cat)} className={`px-3 py-2 border text-sm font-medium ${category===cat?'border-[var(--brand-primary)] text-accent':'theme-border text-secondary'}`}>{cat||'Tout'}</button>)}
+            </div>
+            <div className="flex flex-wrap gap-3 items-end">
+                <label className="text-xs text-secondary">Période<select className="block mt-1 theme-input border rounded px-3 py-2 text-sm" value={period} onChange={e=>setFilter('period',e.target.value)}><option value="">Toutes les dates</option><option value="24h">24 heures</option><option value="7d">7 jours</option><option value="30d">30 jours</option></select></label>
+                <label className="text-xs text-secondary min-w-0 max-w-full">Source<select className="block mt-1 theme-input border rounded px-3 py-2 text-sm max-w-full" value={sourceId} onChange={e=>setFilter('source',e.target.value)}><option value="">Toutes les sources</option>{sources.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+                <button type="button" className="text-sm text-secondary underline py-2" onClick={reset}>Réinitialiser</button>
+                {search.trim()&&<button type="button" className="text-sm text-accent underline py-2" onClick={toggleFollow} aria-pressed={followed.includes(search.trim())}>{followed.includes(search.trim())?'Ne plus suivre':'Suivre cette recherche'}</button>}
+            </div>
+            {sourcesError&&<p role="status" className="text-sm text-secondary">Liste des sources indisponible.</p>}
+            {storageError&&<p role="alert" className="text-sm text-secondary">Impossible d'enregistrer ce suivi dans le navigateur.</p>}
+            {followed.length>0&&<div className="flex flex-wrap gap-2 items-center"><span className="text-xs text-muted">Mes recherches</span>{followed.map(term=><button type="button" key={term} className="border theme-border rounded px-2 py-1 text-sm text-secondary" onClick={()=>setFilter('q',term)}>{term}</button>)}</div>}
+        </section>
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_260px] gap-8">
+            <section aria-label="Actualités">
+                <div className="flex items-center justify-between border-b theme-border pb-3 mb-4"><h2 className="font-serif text-2xl text-primary">Dernières publications</h2>{typeof total==='number'&&<span className="text-sm text-muted">{total} articles</span>}</div>
+                {status==='pending'?<p role="status" className="py-10 text-secondary">Chargement des actualités…</p>:status==='error'&&!articles.length?<div role="alert" className="py-8 text-secondary">Actualités indisponibles. <button className="underline" onClick={()=>refetch()}>Réessayer</button></div>:<>
+                    {!articles.length&&<div className="py-12 text-secondary">Aucun article ne correspond aux filtres. <button onClick={reset} className="underline">Tout afficher</button></div>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">{articles.map(a=><ArticleCard key={a.id} article={a}/>)}</div>
+                    {hasNextPage&&<button type="button" disabled={isFetchingNextPage} onClick={()=>fetchNextPage()} className="mx-auto block my-8 border theme-border px-5 py-3 text-sm font-semibold text-primary">{isFetchingNextPage?'Chargement…':isFetchNextPageError?'Réessayer':'Plus d’articles'}</button>}
+                    {!hasNextPage&&articles.length>0&&<p className="text-center text-sm text-muted py-8">Fin des résultats</p>}
+                </>}
             </section>
-
-            <section className="news-panel rounded-xl p-4 lg:p-5">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                    <div className="flex items-center space-x-2">
-                        <Filter size={16} className="text-muted" />
-                        <span className="text-xs font-bold text-secondary uppercase tracking-[0.18em]">Filtrer par categorie</span>
-                    </div>
-                    <div className="hidden sm:flex items-center space-x-2 text-xs text-muted">
-                        <Layers3 size={14} />
-                        <span>{category || 'Toutes les catégories'}</span>
-                    </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2.5">
-                    <button
-                        onClick={() => setCategory('')}
-                        aria-pressed={category === ''}
-                        className={`px-3.5 py-2 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center space-x-2 border ${category === ''
-                                ? 'bg-cyan-400/[0.12] text-cyan-100 border-cyan-300/30 shadow-lg shadow-cyan-500/10'
-                                : 'news-chip'
-                            }`}
-                    >
-                        <Newspaper size={15} />
-                        <span>Toutes</span>
-                        {stats && (
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${category === '' ? 'bg-cyan-400/15' : 'surface-muted'
-                                }`}>
-                                {stats.total}
-                            </span>
-                        )}
-                    </button>
-                    {availableCategories.map((cat) => (
-                        <button
-                            key={cat}
-                            onClick={() => setCategory(cat)}
-                            aria-pressed={category === cat}
-                            className={`px-3.5 py-2 rounded-lg font-semibold text-sm transition-all duration-300 flex items-center space-x-2 border ${category === cat
-                                    ? 'bg-cyan-400/[0.12] text-cyan-100 border-cyan-300/30 shadow-lg shadow-cyan-500/10'
-                                    : 'news-chip'
-                                }`}
-                        >
-                            <span>{cat}</span>
-                            {stats && stats.stats[cat] !== undefined && (
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${category === cat ? 'bg-cyan-400/15' : 'surface-muted'
-                                    }`}>
-                                    {stats.stats[cat]}
-                                </span>
-                            )}
-                        </button>
-                    ))}
-                </div>
-            </section>
-
-            {status === 'pending' ? (
-                <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-                    <Loader2 className="animate-spin text-cyan-300" size={48} />
-                    <p className="text-secondary font-medium animate-pulse">Chargement de la veille...</p>
-                </div>
-            ) : status === 'error' ? (
-                <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-xl text-red-300 font-bold flex items-center justify-center">
-                    Les actualités sont momentanément indisponibles. Vérifiez la santé du serveur puis réessayez.
-                </div>
-            ) : (
-                <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
-                        {data.pages.map((page) =>
-                            page.data.map((article) => (
-                                <ArticleCard key={article.id} article={article} />
-                            ))
-                        )}
-                    </div>
-
-                    <div ref={ref} className="flex justify-center py-14">
-                        {isFetchingNextPage ? (
-                            <Loader2 className="animate-spin text-cyan-300" size={32} />
-                        ) : hasNextPage ? (
-                            <div className="w-16 h-1 surface-muted rounded-full" />
-                        ) : (
-                            <p className="text-muted font-bold uppercase tracking-widest text-xs">Fin de la veille</p>
-                        )}
-                    </div>
-                </>
-            )}
+            <aside className="space-y-4">
+                <h2 className="font-serif text-2xl text-primary border-b theme-border pb-3">À la une des sources</h2>
+                {editorial?.topics.slice(0,4).map(t=><article key={t.id} className="border-b theme-border pb-4"><p className="text-xs text-accent">{t.sourceCount} sources · {t.category}</p><h3 className="text-primary font-semibold mt-1">{t.title}</h3></article>)}
+                {!editorial?.topics.length&&<p className="text-sm text-secondary">Les dossiers apparaissent lorsque plusieurs sources publient des titres similaires.</p>}
+                <Link to="/editorial" className="text-sm font-semibold text-accent hover:underline">Tous les dossiers et tendances →</Link>
+            </aside>
         </div>
-    );
+    </div>;
 }

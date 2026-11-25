@@ -1,5 +1,5 @@
 import React, { useDeferredValue, useEffect, useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useSearchParams, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Sources from './pages/Sources';
@@ -23,7 +23,18 @@ function getInitialTheme() {
 
 function App() {
   const [searchInput, setSearchInput] = useState('');
-  const search = useDeferredValue(searchInput);
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const activeSearch = location.pathname === '/' ? params.get('q') || '' : searchInput;
+  const search = useDeferredValue(activeSearch);
+  const setSearch = value => {
+    if (location.pathname === '/') setParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (value) next.set('q',value); else next.delete('q');
+      return next;
+    },{replace:true});
+    else setSearchInput(value);
+  };
   const [category, setCategory] = useState('');
   const [theme, setTheme] = useState(getInitialTheme);
 
@@ -37,7 +48,7 @@ function App() {
   };
 
   return (
-    <Layout search={searchInput} onSearch={setSearchInput} theme={theme} onToggleTheme={toggleTheme}>
+    <Layout search={activeSearch} onSearch={setSearch} theme={theme} onToggleTheme={toggleTheme}>
       <Routes>
         <Route path="/" element={<Dashboard search={search} category={category} setCategory={setCategory} />} />
         <Route path="/editorial" element={<Editorial />} />

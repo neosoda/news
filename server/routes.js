@@ -179,15 +179,14 @@ router.get('/articles', (req, res, next) => req.query.bookmarked === 'true' ? re
         { OR: [{ category: null }, { category: { not: 'Spam' } }] }
     ];
 
-    // Filtre de recherche textuelle
-    if (search) {
-        conditions.push({
-            OR: [
-                { title: { contains: search } },
-                { content: { contains: search } }
-            ]
-        });
-    }
+    // Every term must match at least one searchable field.
+    const terms = search.split(/\s+/).filter(Boolean).slice(0,8);
+    for (const term of terms) conditions.push({ OR: [
+        { title: { contains: term } }, { originalTitle: { contains: term } },
+        { content: { contains: term } }, { summary: { contains: term } }
+    ] });
+    const period = { '24h':86400000, '7d':604800000, '30d':2592000000 }[req.query.period];
+    if (typeof period === 'number') conditions.push({ date: { gte:new Date(Date.now()-period) } });
 
     // Filtre de catégorie
     if (category && typeof category === 'string' && category.trim() !== '') {
@@ -232,7 +231,7 @@ router.get('/articles', (req, res, next) => req.query.bookmarked === 'true' ? re
             ],
             take: limit,
             skip: (page - 1) * limit,
-            include: { source: true }
+            include: { source: { select: { id:true,name:true,image:true,category:true } } }
         });
 
         const total = await prisma.article.count({ where });
@@ -274,6 +273,16 @@ router.get('/editorial', async (req, res) => {
         console.error('Editorial analysis failed:',error);
         res.status(503).json({error:'Analyse éditoriale indisponible.'});
     }
+});
+
+router.get('/article-sources', async (req,res) => {
+    try {
+        const sources = await prisma.source.findMany({
+            where: { category:{notIn:[...BREACH_CATEGORY_VALUES]}, articles:{some:{}} },
+            select:{id:true,name:true}, orderBy:{name:'asc'}
+        });
+        res.json(repairMojibakeDeep(sources));
+    } catch (error) { console.error('Public source list failed:',error); res.status(503).json({error:'Sources indisponibles.'}); }
 });
 
 // Source administration is intentionally protected as it exposes feed URLs and changes global data.
