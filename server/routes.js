@@ -46,7 +46,7 @@ function buildBreachExclusionWhere({ allowBreaches = false } = {}) {
     }
     return {
         AND: [
-            { category: { notIn: [...BREACH_CATEGORY_VALUES] } },
+            { OR: [{ category: null }, { category: { notIn: [...BREACH_CATEGORY_VALUES] } }] },
             { source: { category: { notIn: [...BREACH_CATEGORY_VALUES] } } }
         ]
     };
@@ -581,6 +581,7 @@ const { generateCategoryBrief, BRIEF_SOURCE_LIMIT } = require('./services/ai');
 
 // GET /daily-brief - Generate daily highlights
 const pendingBriefs = new Map();
+let nextBriefAttemptAt = 0;
 async function buildDailyBrief(dateKey) {
         const cachedBrief = await prisma.dailyBrief.findUnique({ where: { dateKey } });
         const isFresh = cachedBrief && (Date.now() - cachedBrief.updatedAt.getTime()) < 60 * 60 * 1000;
@@ -597,8 +598,7 @@ async function buildDailyBrief(dateKey) {
             }
         }
 
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
         // 1. Fetch articles from last 24h. Breach articles are intentionally
         // excluded: they live in their own dedicated page, the daily tech
@@ -607,8 +607,7 @@ async function buildDailyBrief(dateKey) {
         const articles = await prisma.article.findMany({
             where: {
                 date: { gt: yesterday, lte: new Date(Date.now() + MAX_FUTURE_SKEW_MS) },
-                category: { not: 'Spam' },
-                ...(breachExclusion || {})
+                AND: [{ OR: [{ category: null }, { category: { not: 'Spam' } }] }, ...(breachExclusion?.AND || [])]
             },
             include: { source: true },
             orderBy: { date: 'desc' }
@@ -627,7 +626,7 @@ async function buildDailyBrief(dateKey) {
         // Distribute articles into their category bucket (fallback to 'Autre')
         articles.forEach(article => {
             const cat = article.category || article.source?.category;
-            if (cat && groups[cat] !== undefined) {
+            if (cat && Object.hasOwn(groups, cat)) {
                 groups[cat].push(article);
             } else {
                 groups['Autre'].push(article);
@@ -678,11 +677,15 @@ router.get('/daily-brief', limitSummarization, async (req, res) => {
     const part = type => parts.find(p => p.type === type).value;
     const dateKey = [part('year'), part('month'), part('day')].join('-');
     let pending = pendingBriefs.get(dateKey);
-    if (!pending) {
-        pending = buildDailyBrief(dateKey).finally(() => pendingBriefs.delete(dateKey));
+    if (!pending && Date.now() >= nextBriefAttemptAt) {
+        pending = buildDailyBrief(dateKey).catch(error => {
+            nextBriefAttemptAt = Date.now() + 60000;
+            throw error;
+        }).finally(() => pendingBriefs.delete(dateKey));
         pendingBriefs.set(dateKey, pending);
     }
     try {
+        if (!pending) throw new Error('brief_retry_cooldown');
         res.json(await pending);
     } catch (error) {
         console.error('Daily Brief Error:', error);

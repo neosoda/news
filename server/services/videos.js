@@ -40,6 +40,29 @@ const DEFAULT_LIMIT = 24;
 const HANDLE_CHANNEL_ID_REGEX = /"channelId":"(UC[\w-]{20,})"/;
 const HANDLE_EXTERNAL_ID_REGEX = /"externalId":"(UC[\w-]{20,})"/;
 const handleResolutionCache = new Map();
+const channelFeeds = new Map();
+const CHANNEL_TTL_MS = 15 * 60 * 1000;
+async function getChannelFeed(channel) {
+    const key = channel.id || channel.handle;
+    const cached = channelFeeds.get(key);
+    if (cached?.pending) return cached.pending;
+    if (cached && cached.expires > Date.now()) {
+        if (cached.error) throw cached.error;
+        return cached.feed;
+    }
+    const pending = (async () => {
+        const url = await resolveFeedUrl(channel);
+        return parser.parseURL(url);
+    })().then(feed => {
+        channelFeeds.set(key, { feed, expires: Date.now() + CHANNEL_TTL_MS });
+        return feed;
+    }, error => {
+        channelFeeds.set(key, { error, expires: Date.now() + 60000 });
+        throw error;
+    });
+    channelFeeds.set(key, { pending });
+    return pending;
+}
 
 function normalizeTopic(topic) {
     return topic
@@ -202,8 +225,7 @@ async function fetchVideos({ query = '', topics = DEFAULT_TOPICS, limit = DEFAUL
 
     const settled = await Promise.allSettled(
         selectedChannels.map(async (channel) => {
-            const feedUrl = await resolveFeedUrl(channel);
-            const feed = await parser.parseURL(feedUrl);
+            const feed = await getChannelFeed(channel);
             return (feed.items || []).map((item) => {
                 const mapped = mapFeedItem(item, channel.name);
                 return {

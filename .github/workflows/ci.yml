@@ -23,6 +23,11 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
       - run: npx prisma generate
+      - name: Prepare isolated SQLite test schemas
+        run: |
+          for db in newsai-admin-route-test newsai-breach-exclusion-test newsai-title-signature-dedup-test; do
+            SQLITE_URL="file:/tmp/$db.db" npx prisma db push --skip-generate
+          done
       - run: npm test
   client:
     runs-on: ubuntu-latest

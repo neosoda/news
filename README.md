@@ -127,7 +127,7 @@ Pour générer un bon jeton :
 openssl rand -base64 48
 ```
 
-> **Sécurité :** ne publiez jamais votre `.env` ni vos clés API. Le traducteur par défaut est externe au conteneur. Pour utiliser votre propre LibreTranslate avec Docker Compose, modifiez aussi `TRANSLATION_URL` dans `docker-compose.yml`, où l'URL est actuellement fixée.
+> **Sécurité :** ne publiez jamais votre `.env` ni vos clés API. Le traducteur par défaut est externe au conteneur. Pour utiliser votre propre LibreTranslate avec Docker Compose, définissez `TRANSLATION_URL` dans votre environnement ou votre fichier `.env`.
 
 ### 3. Lancer l'application
 

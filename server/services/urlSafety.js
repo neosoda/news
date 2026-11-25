@@ -61,12 +61,16 @@ function isBlockedHostname(hostname) {
 
 async function lookupHostAddresses(hostname) {
     const lookupPromise = dns.lookup(hostname, { all: true, verbatim: true });
-    const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('dns_timeout')), DNS_LOOKUP_TIMEOUT_MS);
-    });
-
-    const entries = await Promise.race([lookupPromise, timeoutPromise]);
-    return entries.map((entry) => entry.address).filter(Boolean);
+    let timer;
+    try {
+        const timeoutPromise = new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('dns_timeout')), DNS_LOOKUP_TIMEOUT_MS);
+        });
+        const entries = await Promise.race([lookupPromise, timeoutPromise]);
+        return entries.map((entry) => entry.address).filter(Boolean);
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 async function validateOutboundHttpUrl(rawUrl, options = {}) {

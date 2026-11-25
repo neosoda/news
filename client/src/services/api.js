@@ -83,7 +83,8 @@ export const getBookmarks = async () => {
 };
 
 export const toggleBookmark = async (article) => {
-    const current = await getBookmarks();
+    const current = JSON.parse(window.localStorage.getItem(BOOKMARK_KEY) || '[]');
+    if (!Array.isArray(current)) throw new Error('Invalid bookmarks');
     const exists = current.some(item => item.link === article.link);
     const next = exists ? current.filter(item => item.link !== article.link) : [{ ...article, isBookmarked: true }, ...current];
     window.localStorage.setItem(BOOKMARK_KEY, JSON.stringify(next));
@@ -91,8 +92,8 @@ export const toggleBookmark = async (article) => {
 };
 
 export const getDailyBrief = async () => {
-    const { data } = await api.get('/daily-brief');
-    return data;
+    const { data, headers } = await api.get('/daily-brief');
+    return { briefs: data, stale: headers['x-brief-stale'] === 'true' };
 };
 
 export const getArticleStats = async () => {

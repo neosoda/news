@@ -149,12 +149,13 @@ export default function DailyBrief() {
     const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
     const formattedDate = today.charAt(0).toUpperCase() + today.slice(1);
 
-    const { data: briefs, isLoading, isError, refetch, isFetching } = useQuery({
+    const { data: briefResult, isLoading, isError, refetch, isFetching } = useQuery({
         queryKey: ['daily-brief'],
         queryFn: getDailyBrief,
         staleTime: 1000 * 60 * 60, // Cache for 1 hour
         refetchOnWindowFocus: false
     });
+    const briefs = briefResult?.briefs;
 
     const totalArticles = briefs?.reduce((sum, s) => sum + (s.articleCount || 0), 0) || 0;
 
@@ -189,6 +190,7 @@ export default function DailyBrief() {
                 )}
             </header>
 
+            {briefResult?.stale && <p role="status" className="mb-4 text-sm text-secondary">Dernière édition disponible : actualisation temporairement indisponible.</p>}
             {isLoading ? (
                 <div aria-busy="true" aria-label="Chargement du brief" className="space-y-12 border-t theme-border pt-10">
                     {[0, 1].map((i) => (
